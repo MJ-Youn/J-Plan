@@ -1,0 +1,17 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "j-plan"
+compatibility_date = "2024-11-01"
+
+[build]
+command = "npm run build"
+watch_dir = "src"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "j-plan-db"
+# 데이터베이스 생성 후 id 값을 여기에 채워넣어야 합니다.
+database_id = "3ad4e164-bb12-455e-9a1a-aee6f5b6e07a"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "j-plan-storage"

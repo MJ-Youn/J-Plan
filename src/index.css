@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-primary: #aa3bff;
+  --color-background-light: #ffffff;
+  --color-background-dark: #121212;
+  --color-text-light: #08060d;
+  --color-text-dark: #f3f4f6;
+  
+  /* 회색을 쿨그레이(푸른빛)에서 징크(무채색) 계열로 변경 */
+  --color-gray-50: var(--color-zinc-50);
+  --color-gray-100: var(--color-zinc-100);
+  --color-gray-200: var(--color-zinc-200);
+  --color-gray-300: var(--color-zinc-300);
+  --color-gray-400: var(--color-zinc-400);
+  --color-gray-500: var(--color-zinc-500);
+  --color-gray-600: var(--color-zinc-600);
+  --color-gray-700: var(--color-zinc-700);
+  --color-gray-800: var(--color-zinc-800);
+  --color-gray-900: var(--color-zinc-900);
+  --color-gray-950: var(--color-zinc-950);
+}
+
+@layer base {
+  :root {
+    --text: #08060d;
+    --bg: #ffffff;
+    --border: #e4e4e7;
+    --primary: #f59e0b; /* Amber-500 */
+  }
+  
+  :root.dark {
+    --text: #f4f4f5;
+    --bg: #121212;
+    --border: #27272a;
+    --primary: #fbbf24; /* Amber-400 */
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    transition: background-color 0.3s, color 0.3s;
+  }
+}
