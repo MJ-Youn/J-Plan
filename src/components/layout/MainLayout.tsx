@@ -12,10 +12,6 @@ const MainLayout: React.FC = () => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300 overflow-hidden print:overflow-visible print:h-auto">
       {/* GNB (Header) */}

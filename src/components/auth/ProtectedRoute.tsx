@@ -9,7 +9,11 @@ import { useAuthStore } from '../../store/authStore';
  * @since 2026-05-06
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isLoading } = useAuthStore();
+  const { user, isLoading, checkAuth } = useAuthStore();
+
+  React.useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   if (isLoading) {
     return (

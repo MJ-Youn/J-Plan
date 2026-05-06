@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Map, Sparkles } from 'lucide-react';
-import Turnstile from 'react-turnstile';
+import { Map as MapIcon, Sparkles } from 'lucide-react';
+import { Turnstile } from 'react-turnstile';
 import { useAuthStore } from '../store/authStore';
 
 /**
@@ -54,7 +54,7 @@ const Login: React.FC = () => {
       <div className="max-w-md w-full p-8 md:p-12 text-center relative z-10 bg-white/80 dark:bg-zinc-900/50 backdrop-blur-xl rounded-3xl border border-gray-200 dark:border-zinc-800 shadow-2xl">
         <div className="mb-8 flex justify-center">
           <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-2xl shadow-inner">
-            <Map size={48} className="text-amber-600 dark:text-amber-500" />
+            <MapIcon size={48} className="text-amber-600 dark:text-amber-500" />
           </div>
         </div>
 

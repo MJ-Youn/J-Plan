@@ -12,10 +12,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
   if (savedTheme) {
     return savedTheme;
   }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
+  return 'dark';
 };
 
 export const useThemeStore = create<ThemeState>((set) => ({

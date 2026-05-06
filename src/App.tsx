@@ -6,7 +6,16 @@ import TravelDetail from './pages/TravelDetail';
 import Login from './pages/Login';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
+import { useThemeStore } from './store/themeStore';
+import { useEffect } from 'react';
+
 function App() {
+  const { theme } = useThemeStore();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
   return (
     <BrowserRouter>
       <Routes>
