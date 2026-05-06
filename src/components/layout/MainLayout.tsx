@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 
 const MainLayout: React.FC = () => {
   const { theme, toggleTheme } = useThemeStore();
-  const { user, isLoading, checkAuth, logout } = useAuthStore();
+  const { user, isLoading, logout } = useAuthStore();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
