@@ -67,7 +67,7 @@ export async function onRequestGet(context: any) {
 
   // 5. Set Cookie and redirect to Home
   const headers = new Headers();
-  headers.set('Location', '/');
+  headers.set('Location', '/travels');
   headers.set(
     'Set-Cookie',
     `auth_token=${jwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`

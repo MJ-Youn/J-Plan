@@ -1,13 +1,12 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import MainLayout from './components/layout/MainLayout';
-import Home from './pages/Home';
-import TravelList from './pages/TravelList';
-import TravelDetail from './pages/TravelDetail';
-import Login from './pages/Login';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import MainLayout from './components/layout/MainLayout';
+import Login from './pages/Login';
+import TravelDetail from './pages/TravelDetail';
+import TravelList from './pages/TravelList';
 
-import { useThemeStore } from './store/themeStore';
 import { useEffect } from 'react';
+import { useThemeStore } from './store/themeStore';
 
 function App() {
   const { theme } = useThemeStore();
@@ -21,7 +20,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route index element={<Home />} />
+          <Route index element={<Navigate to="/travels" replace />} />
           <Route path="travels" element={<TravelList />} />
           <Route path="travels/:id" element={<TravelDetail />} />
         </Route>

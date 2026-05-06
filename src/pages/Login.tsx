@@ -22,7 +22,7 @@ const Login: React.FC = () => {
 
   useEffect(() => {
     if (!isLoading && user) {
-      navigate('/');
+      navigate('/travels');
     }
   }, [user, isLoading, navigate]);
 
