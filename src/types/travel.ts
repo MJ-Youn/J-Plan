@@ -12,6 +12,7 @@ export interface Accommodation {
   address: string;
   description: string;
   dayIndex: number; // 1, 2, ...
+  phone?: string;
 }
 
 export interface TravelExportData {
