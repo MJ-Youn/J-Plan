@@ -241,38 +241,24 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
 
 const GoogleMapView: React.FC<Props> = (props) => {
     const { theme } = useThemeStore();
-    const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
     // Google Maps built-in color scheme (v3.56+)
     // mapId="DEMO_MAP_ID" (vector map)를 사용할 때 styles 대신 colorScheme를 통해 다크 모드를 완벽 지원합니다.
     const mapColorScheme = theme === 'dark' ? 'DARK' : 'LIGHT';
 
-    if (!API_KEY) {
-        return (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-xl p-6 text-center">
-                <p className="font-bold mb-2 text-lg">Google Maps API Key가 필요합니다.</p>
-                <p className="text-sm">
-                    <code>.env.local</code> 파일에 <code>VITE_GOOGLE_MAPS_API_KEY</code>를 설정해주세요.
-                </p>
-            </div>
-        );
-    }
-
     return (
         <div className="w-full h-full relative z-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-900">
-            <APIProvider apiKey={API_KEY}>
-                <GoogleMap
-                    defaultCenter={{ lat: 37.5665, lng: 126.978 }}
-                    defaultZoom={13}
-                    mapId="DEMO_MAP_ID"
-                    disableDefaultUI={true}
-                    colorScheme={mapColorScheme}
-                    gestureHandling="greedy"
-                    style={{ width: '100%', height: '100%' }}
-                >
-                    <MapInner {...props} />
-                </GoogleMap>
-            </APIProvider>
+            <GoogleMap
+                defaultCenter={{ lat: 37.5665, lng: 126.978 }}
+                defaultZoom={13}
+                mapId="DEMO_MAP_ID"
+                disableDefaultUI={true}
+                colorScheme={mapColorScheme}
+                gestureHandling="greedy"
+                style={{ width: '100%', height: '100%' }}
+            >
+                <MapInner {...props} />
+            </GoogleMap>
         </div>
     );
 };

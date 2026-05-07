@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useTravelStore } from '../store/travelStore';
 import TimeTable from '../components/travel/TimeTable';
@@ -31,6 +31,21 @@ const TravelDetail: React.FC = () => {
     const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Itinerary | null>(null);
     const [isAccModalOpen, setIsAccModalOpen] = useState(false);
+    // TimeTable에서 올라오는 미저장 변경 상태
+    const [hasPendingChanges, setHasPendingChanges] = useState(false);
+
+    // SPA 페이지 이동 시 미저장 경고 (우리 앱은 BrowserRouter를 사용하므로
+    // useBlocker는 이곳 페이지에서 호출해야 함)
+    const blocker = useBlocker(hasPendingChanges);
+    useEffect(() => {
+        if (blocker.state === 'blocked') {
+            if (window.confirm('저장되지 않은 변경 사항이 있습니다. 페이지를 이탈하시겠습니까?')) {
+                blocker.proceed();
+            } else {
+                blocker.reset();
+            }
+        }
+    }, [blocker]);
 
     const travel = travels.find((t) => t.id === id);
 
@@ -173,6 +188,7 @@ const TravelDetail: React.FC = () => {
                                     isMapExpanded={isMapExpanded}
                                     totalDays={totalDays}
                                     selectedItineraryId={selectedItineraryId}
+                                    onHasPendingChanges={setHasPendingChanges}
                                     onItineraryClick={(itiId) => {
                                         setSelectedItineraryId(itiId);
                                         if (window.innerWidth < 1024) setActiveTab('map');

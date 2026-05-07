@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
-import { Map as MapIcon, ArrowRight, Edit2, Trash2 } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X } from 'lucide-react';
+import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
-import { getTypeEmoji } from '../../types/travel';
+import { getTypeEmoji, getTransportInfo } from '../../types/travel';
 
 interface Props {
     itineraries: Itinerary[];
@@ -12,11 +13,20 @@ interface Props {
     onItineraryClick: (id: string) => void;
     onEdit: (e: React.MouseEvent, iti: Itinerary) => void;
     onDelete: (e: React.MouseEvent, id: string) => void;
+    /** 미저장 변경 사항 유무를 부모에게 알림 */
+    onHasPendingChanges?: (hasPending: boolean) => void;
 }
 
 type ProcessedItinerary = Itinerary & {
     startMins: number;
     endMins: number;
+};
+
+/** 미저장 변경 사항 타입 */
+type PendingChange = {
+    id: string;
+    time: string;
+    endTime?: string;
 };
 
 const parseTime = (timeStr: string) => {
@@ -32,13 +42,77 @@ const formatTime = (mins: number) => {
     return `${h}:${m}`;
 };
 
-const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, selectedItineraryId, onItineraryClick, onEdit, onDelete }) => {
-    const HOUR_HEIGHT = 160; // 높이를 늘려 잘림 방지
+const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, selectedItineraryId, onItineraryClick, onEdit, onDelete, onHasPendingChanges }) => {
+    const { updateItinerary } = useTravelStore();
+    const HOUR_HEIGHT = 160;
+    const MIN_HEIGHT = 40;
+
+    // 미저장 변경 사항 (시간 드래그/스왑 결과를 즉시 반영하지 않고 누적)
+    const [pendingChanges, setPendingChanges] = useState<Record<string, PendingChange>>({});
+    const hasPendingChanges = Object.keys(pendingChanges).length > 0;
+
+    // 리사이즈 상태 관리
+    const [resizeInfo, setResizeInfo] = useState<{
+        id: string;
+        type: 'top' | 'bottom';
+        startY: number;
+        initialStartMins: number;
+        initialEndMins: number;
+        currentStartMins: number;
+        currentEndMins: number;
+        dayIndex: number;
+        minBound: number;
+        maxBound: number;
+    } | null>(null);
+
+    // 드래그 앤 드롭 스왑 상태
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+    // hasPendingChanges 변경 시 부모에 알림
+    useEffect(() => {
+        onHasPendingChanges?.(hasPendingChanges);
+    }, [hasPendingChanges, onHasPendingChanges]);
+
+    // ─── 이탈 경고 (브라우저 새로고침/탭 닫기) ───────────────
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (hasPendingChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [hasPendingChanges]);
+
+    // ─── 저장 / 초기화 ────────────────────────────────────────
+    const handleSaveAll = useCallback(async () => {
+        const updates = Object.values(pendingChanges);
+        for (const change of updates) {
+            await updateItinerary(change.id, { time: change.time, endTime: change.endTime });
+        }
+        setPendingChanges({});
+    }, [pendingChanges, updateItinerary]);
+
+    const handleDiscardAll = useCallback(() => {
+        if (window.confirm('변경 사항을 취소하시겠습니까?')) {
+            setPendingChanges({});
+        }
+    }, []);
+
+    // pending 변경 사항을 반영한 itinerary 목록 (렌더링용)
+    const effectiveItineraries = useMemo(() => {
+        return itineraries.map((iti) => {
+            const pending = pendingChanges[iti.id];
+            if (pending) return { ...iti, time: pending.time, endTime: pending.endTime };
+            return iti;
+        });
+    }, [itineraries, pendingChanges]);
 
     // 모든 일정 전처리 (시작/종료 시간 분 단위 계산)
     const allProcessedEvents = useMemo(() => {
         const grouped = new Map<number, Itinerary[]>();
-        itineraries.forEach((iti) => {
+        effectiveItineraries.forEach((iti) => {
             const day = iti.dayIndex;
             if (!grouped.has(day)) grouped.set(day, []);
             grouped.get(day)!.push(iti);
@@ -50,19 +124,103 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             for (let i = 0; i < sorted.length; i++) {
                 const iti = sorted[i];
                 const startMins = parseTime(iti.time);
-                let endMins = startMins + 60; // 기본 1시간
+                let endMins = startMins + 60;
                 if (iti.endTime) {
                     endMins = parseTime(iti.endTime);
                 } else if (i + 1 < sorted.length) {
-                    endMins = parseTime(sorted[i + 1].time); // 다음 일정 시작시간
+                    endMins = parseTime(sorted[i + 1].time);
                 }
                 processed.push({ ...iti, startMins, endMins });
             }
         }
         return processed;
-    }, [itineraries]);
+    }, [effectiveItineraries]);
 
-    // 그리드에 들어갈 이벤트를 렌더링하는 함수
+    // ─── 리사이즈 핸들러 ──────────────────────────────────────
+    const handleResizeStart = (e: React.MouseEvent, ev: ProcessedItinerary, type: 'top' | 'bottom', dayEvents: ProcessedItinerary[]) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const sorted = [...dayEvents].sort((a, b) => a.startMins - b.startMins);
+        const idx = sorted.findIndex((s) => s.id === ev.id);
+        const prev = sorted[idx - 1];
+        const next = sorted[idx + 1];
+
+        const minBound = prev ? prev.endMins : 0;
+        const maxBound = next ? next.startMins : 24 * 60;
+
+        setResizeInfo({
+            id: ev.id,
+            type,
+            startY: e.pageY,
+            initialStartMins: ev.startMins,
+            initialEndMins: ev.endMins,
+            currentStartMins: ev.startMins,
+            currentEndMins: ev.endMins,
+            dayIndex: ev.dayIndex,
+            minBound,
+            maxBound,
+        });
+    };
+
+    // ─── 드래그 앤 드롭 스왑 핸들러 ──────────────────────────
+    const handleSwap = (sourceId: string, targetId: string) => {
+        const source = effectiveItineraries.find((i) => i.id === sourceId);
+        const target = effectiveItineraries.find((i) => i.id === targetId);
+        if (source && target) {
+            setPendingChanges((prev) => ({
+                ...prev,
+                [sourceId]: { id: sourceId, time: target.time, endTime: target.endTime },
+                [targetId]: { id: targetId, time: source.time, endTime: source.endTime },
+            }));
+        }
+    };
+
+    // ─── 마우스 이벤트 (리사이즈) ─────────────────────────────
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!resizeInfo) return;
+
+            const deltaY = e.pageY - resizeInfo.startY;
+            const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+
+            if (resizeInfo.type === 'top') {
+                let newStart = resizeInfo.initialStartMins + deltaMins;
+                newStart = Math.max(resizeInfo.minBound, Math.min(newStart, resizeInfo.initialEndMins - 15));
+                setResizeInfo((prev) => (prev ? { ...prev, currentStartMins: newStart } : null));
+            } else {
+                let newEnd = resizeInfo.initialEndMins + deltaMins;
+                newEnd = Math.max(resizeInfo.initialStartMins + 15, Math.min(newEnd, resizeInfo.maxBound));
+                setResizeInfo((prev) => (prev ? { ...prev, currentEndMins: newEnd } : null));
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (resizeInfo) {
+                // 즉시 저장 대신 pendingChanges에 누적
+                setPendingChanges((prev) => ({
+                    ...prev,
+                    [resizeInfo.id]: {
+                        id: resizeInfo.id,
+                        time: formatTime(resizeInfo.currentStartMins),
+                        endTime: formatTime(resizeInfo.currentEndMins),
+                    },
+                }));
+                setResizeInfo(null);
+            }
+        };
+
+        if (resizeInfo) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [resizeInfo]);
+
+    // ─── 이벤트 렌더링 ────────────────────────────────────────
     const renderEventsForColumn = (colId: number | 'all', events: ProcessedItinerary[], startHour: number) => {
         const colEvents = events.filter((iti) => colId === 'all' || iti.dayIndex === colId);
         const placed: { event: ProcessedItinerary; col: number }[] = [];
@@ -79,14 +237,23 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
         const maxCol = Math.max(0, ...placed.map((p) => p.col));
 
+        // 리사이즈 중인 값 실시간 반영
+        const getEffectiveMins = (ev: ProcessedItinerary) => {
+            if (resizeInfo && resizeInfo.id === ev.id) {
+                return { start: resizeInfo.currentStartMins, end: resizeInfo.currentEndMins };
+            }
+            return { start: ev.startMins, end: ev.endMins };
+        };
+
         return placed.map((p) => {
-            const top = ((p.event.startMins - startHour * 60) / 60) * HOUR_HEIGHT;
-            const rawHeight = ((p.event.endMins - p.event.startMins) / 60) * HOUR_HEIGHT;
-            const height = Math.max(rawHeight, 40); // 최소 높이 보장
+            const { start, end } = getEffectiveMins(p.event);
+            const top = ((start - startHour * 60) / 60) * HOUR_HEIGHT;
+            const height = Math.max(((end - start) / 60) * HOUR_HEIGHT, MIN_HEIGHT);
 
             const widthPct = 100 / (maxCol + 1);
             const leftPct = p.col * widthPct;
             const isSelected = selectedItineraryId === p.event.id;
+            const isPending = !!pendingChanges[p.event.id];
 
             const duration = p.event.endMins - p.event.startMins;
             const isShortEvent = duration <= 30;
@@ -95,12 +262,53 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                 <div
                     key={p.event.id}
                     id={`itinerary-${p.event.id}`}
+                    draggable
+                    onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', p.event.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverId(p.event.id);
+                    }}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOverId(null);
+                        const sourceId = e.dataTransfer.getData('text/plain');
+                        const targetId = p.event.id;
+                        if (sourceId && sourceId !== targetId) {
+                            handleSwap(sourceId, targetId);
+                        }
+                    }}
                     onClick={() => onItineraryClick(p.event.id)}
                     className={`absolute p-2 shadow-sm hover:shadow-md transition-all cursor-pointer group rounded-none border-t border-b border-r ${isShortEvent ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'} ${
-                        isSelected ? 'border-amber-500 dark:border-amber-500 ring-2 ring-amber-500 dark:ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30' : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
-                    }`}
+                        isSelected
+                            ? 'border-amber-500 ring-2 ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30'
+                            : isPending
+                              ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20'
+                              : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
+                    } ${resizeInfo?.id === p.event.id ? 'z-30 opacity-90 shadow-xl border-amber-400' : ''} ${dragOverId === p.event.id ? 'ring-4 ring-blue-400 z-30' : ''}`}
                     style={{ top, height: height + 1, left: `${leftPct}%`, width: `${widthPct}%`, marginTop: '-1px' }}
                 >
+                    {/* 미저장 변경 인디케이터 */}
+                    {isPending && (
+                        <span
+                            className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-400"
+                            title="미저장 변경 사항"
+                        />
+                    )}
+
+                    {/* Resize Handles */}
+                    <div
+                        className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-amber-400 z-10 transition-colors"
+                        onMouseDown={(e) => handleResizeStart(e, p.event, 'top', colEvents)}
+                    />
+                    <div
+                        className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-amber-400 z-10 transition-colors"
+                        onMouseDown={(e) => handleResizeStart(e, p.event, 'bottom', colEvents)}
+                    />
+
                     <div className="flex justify-between items-start mb-1 gap-2">
                         <div className="flex items-center space-x-1 flex-wrap">
                             <span className="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-amber-100 text-amber-700 dark:bg-zinc-700 dark:text-zinc-300 font-medium shrink-0">
@@ -129,8 +337,15 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                     {!isShortEvent && (
                         <div className="text-[10px] text-gray-500 flex items-center space-x-1 mb-1">
                             <span>
-                                {formatTime(p.event.startMins)} - {formatTime(p.event.endMins)}
+                                {formatTime(start)} - {formatTime(end)}
                             </span>
+                            {p.event.type === '이동' && (p.event.duration || p.event.distance) && (
+                                <span className="text-blue-500 dark:text-blue-400 font-medium ml-1">
+                                    ({p.event.duration}
+                                    {p.event.duration && p.event.distance ? ' / ' : ''}
+                                    {p.event.distance})
+                                </span>
+                            )}
                         </div>
                     )}
 
@@ -150,6 +365,13 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                                 className="inline shrink-0 mx-1"
                                             />
                                             {p.event.arrivalAddress}
+                                            {(p.event.duration || p.event.distance) && (
+                                                <span className="ml-2 text-blue-600 dark:text-blue-400 font-bold text-[10px] sm:text-xs whitespace-nowrap">
+                                                    ({getTransportInfo(p.event.transportMode).emoji} {p.event.duration}
+                                                    {p.event.duration && p.event.distance ? ' · ' : ''}
+                                                    {p.event.distance})
+                                                </span>
+                                            )}
                                         </>
                                     )}
                                 </span>
@@ -161,13 +383,13 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         });
     };
 
-    // 단일 그리드를 렌더링하는 컴포넌트
+    // ─── 단일 그리드 컴포넌트 ─────────────────────────────────
     const TimeGrid = ({ columns, events, startHour, endHour }: { columns: { id: number | 'all'; label: string }[]; events: ProcessedItinerary[]; startHour: number; endHour: number }) => {
         const totalHours = Math.max(1, endHour - startHour) + 1;
 
         return (
             <div className="flex flex-col">
-                {/* Header (Columns) */}
+                {/* Header */}
                 <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 sticky top-0 z-30">
                     <div className="w-16 shrink-0 border-r border-gray-200 dark:border-gray-700 flex items-center justify-center">
                         <span className="text-[10px] font-semibold text-gray-400">시간</span>
@@ -204,7 +426,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         className="flex-1 relative bg-white dark:bg-gray-900/20"
                         style={{ height: totalHours * HOUR_HEIGHT }}
                     >
-                        {/* Background Horizontal Lines */}
+                        {/* Background Lines */}
                         <div className="absolute inset-0 pointer-events-none flex flex-col z-0">
                             {Array.from({ length: totalHours }).map((_, i) => (
                                 <div
@@ -220,7 +442,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                             ))}
                         </div>
 
-                        {/* Columns Container */}
+                        {/* Columns */}
                         <div className="absolute inset-0 flex z-10">
                             {columns.map((col) => (
                                 <div
@@ -237,14 +459,35 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         );
     };
 
-    // 모드 판별 로직
     const isSequentialMode = !isMapExpanded && selectedDay === 'all';
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden print:border-none print:overflow-visible print:h-auto print:block">
+            {/* ── 미저장 변경 사항 알림 배너 ── */}
+            {hasPendingChanges && (
+                <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 shrink-0">
+                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">⚠️ {Object.keys(pendingChanges).length}개의 미저장 변경 사항이 있습니다.</span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleDiscardAll}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <X size={12} />
+                            취소
+                        </button>
+                        <button
+                            onClick={handleSaveAll}
+                            className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded transition-colors shadow-sm"
+                        >
+                            <Save size={12} />
+                            저장
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex-1 overflow-y-auto scrollbar-thin print:overflow-visible print:h-auto print:block">
                 {isSequentialMode ? (
-                    // 좁은 뷰(지도모드) + 전체 일정: 일차별로 직렬(Sequential) 렌더링
                     <div className="flex flex-col">
                         {Array.from({ length: totalDays }).map((_, i) => {
                             const dayIndex = i + 1;
@@ -275,7 +518,6 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         })}
                     </div>
                 ) : (
-                    // 넓은 뷰 또는 특정 일차만 선택된 경우: 하나의 공통 그리드
                     (() => {
                         let columns: { id: number | 'all'; label: string }[] = [];
                         if (selectedDay === 'all') {

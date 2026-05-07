@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useTravelStore } from '../../store/travelStore';
-import type { ItineraryType, Itinerary } from '../../types/travel';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useModal } from '../../hooks/useModal';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
+import type { TransportMode } from '../../types/travel';
 
 interface Props {
     isOpen: boolean;
@@ -27,6 +28,13 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
     const [address, setAddress] = useState('');
     const [arrivalAddress, setArrivalAddress] = useState('');
     const [description, setDescription] = useState('');
+    const [transportMode, setTransportMode] = useState<TransportMode | ''>('');
+    const [duration, setDuration] = useState('');
+    const [distance, setDistance] = useState('');
+    const [isCalculating, setIsCalculating] = useState(false);
+
+    const routesLib = useMapsLibrary('routes');
+    const geocodingLib = useMapsLibrary('geocoding');
 
     useEffect(() => {
         if (isOpen) {
@@ -39,6 +47,9 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 setAddress(editTarget.address);
                 setArrivalAddress(editTarget.arrivalAddress || '');
                 setDescription(editTarget.description);
+                setTransportMode(editTarget.transportMode || '');
+                setDuration(editTarget.duration || '');
+                setDistance(editTarget.distance || '');
             } else {
                 // 기존 값이 남아있지 않도록 완전히 초기화
                 setType('');
@@ -49,9 +60,117 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 setAddress('');
                 setArrivalAddress('');
                 setDescription('');
+                setTransportMode('');
+                setDuration('');
+                setDistance('');
             }
         }
     }, [editTarget, isOpen]);
+
+    // 이동 소요 시간 자동 계산
+    useEffect(() => {
+        if (type === '이동' && address && arrivalAddress && transportMode && routesLib) {
+            const timer = setTimeout(() => {
+                calculateDuration();
+            }, 800); // 디바운스 적용
+            return () => clearTimeout(timer);
+        }
+    }, [address, arrivalAddress, transportMode, type, routesLib]);
+
+    const calculateDuration = async () => {
+        if (!routesLib || !geocodingLib || !address || !arrivalAddress || !transportMode) return;
+        setIsCalculating(true);
+
+        try {
+            const geocoder = new geocodingLib.Geocoder();
+
+            // 1. 출발지/도착지 좌표 및 국가 정보 조회 (병렬 처리)
+            const [originRes, destRes] = await Promise.all([geocoder.geocode({ address, language: 'ko' }), geocoder.geocode({ address: arrivalAddress, language: 'ko' })]);
+
+            if (!originRes.results?.[0] || !destRes.results?.[0]) {
+                setDuration('위치 찾을 수 없음');
+                return;
+            }
+
+            const isKR = (res: google.maps.GeocoderResponse) => res.results[0].address_components.some((c) => c.types.includes('country') && c.short_name === 'KR');
+
+            const startLoc = originRes.results[0].geometry.location;
+            const endLoc = destRes.results[0].geometry.location;
+            const originStr = `${startLoc.lng()},${startLoc.lat()}`;
+            const destStr = `${endLoc.lng()},${endLoc.lat()}`;
+
+            // 2. 한국 여부에 따른 분기 처리
+            if (isKR(originRes) && isKR(destRes) && (transportMode === 'DRIVING' || transportMode === 'WALKING' || transportMode === 'BICYCLING')) {
+                // [한국 - 자동차/도보/자전거] Kakao Mobility 호출
+                const KAKAO_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY;
+                let data;
+
+                if (import.meta.env.DEV && KAKAO_KEY) {
+                    // 로컬 개발 환경: 프록시 없이 직접 호출 (Vite의 functions 인식 문제 해결)
+                    const res = await fetch(`https://apis-navi.kakaomobility.com/v1/directions?origin=${originStr}&destination=${destStr}`, {
+                        headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
+                    });
+                    if (!res.ok) throw new Error('Kakao Direct API Error');
+                    data = await res.json();
+                } else {
+                    // 운영 환경: Cloudflare Worker 프록시 경유
+                    const res = await fetch(`/api/geo/kakao-directions?origin=${originStr}&destination=${destStr}`);
+                    if (!res.ok) throw new Error('Kakao Proxy Error');
+                    data = await res.json();
+                }
+
+                if (data.routes && data.routes[0]) {
+                    const summary = data.routes[0].summary;
+                    const distanceMeters = summary.distance; // 미터 단위
+                    const distanceText = distanceMeters < 1000 ? `${distanceMeters}m` : `${(distanceMeters / 1000).toFixed(1)}km`;
+                    setDistance(distanceText);
+
+                    if (transportMode === 'DRIVING') {
+                        // 자동차는 Kakao가 주는 duration(초) 사용
+                        const mins = Math.round(summary.duration / 60);
+                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
+                    } else if (transportMode === 'WALKING') {
+                        // 도보는 도로 거리 기준 분당 80m 계산 (4.8km/h)
+                        const mins = Math.round(distanceMeters / 80);
+                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
+                    } else if (transportMode === 'BICYCLING') {
+                        // 자전거는 도로 거리 기준 분당 250m 계산 (15km/h)
+                        const mins = Math.round(distanceMeters / 250);
+                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
+                    }
+                } else {
+                    setDuration('경로 찾을 수 없음');
+                    setDistance('');
+                }
+            } else {
+                // [해외 또는 대중교통] 기존 Google Distance Matrix 사용
+                const service = new routesLib.DistanceMatrixService();
+                const response = await service.getDistanceMatrix({
+                    origins: [startLoc],
+                    destinations: [endLoc],
+                    travelMode: google.maps.TravelMode[transportMode as TransportMode],
+                });
+
+                const element = response.rows[0].elements[0];
+                if (element.status === 'OK') {
+                    setDuration(element.duration.text);
+                    setDistance(element.distance.text);
+                } else if (element.status === 'ZERO_RESULTS') {
+                    setDuration('경로 찾을 수 없음');
+                    setDistance('');
+                } else {
+                    setDuration('계산 실패');
+                    setDistance('');
+                }
+            }
+        } catch (error) {
+            console.error('[ItineraryModal] calculateDuration failed:', error);
+            setDuration('연동 오류');
+            setDistance('');
+        } finally {
+            setIsCalculating(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -61,10 +180,35 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
         if (type === '이동' && (!address || !arrivalAddress)) return alert('이동일 경우 출발 위치와 도착 위치를 모두 입력해야 합니다.');
 
         if (editTarget) {
-            updateItinerary(editTarget.id, { type: type as ItineraryType, dayIndex: Number(dayIndex), time, endTime, content, address, arrivalAddress, description });
+            updateItinerary(editTarget.id, {
+                type: type as ItineraryType,
+                dayIndex: Number(dayIndex),
+                time,
+                endTime,
+                content,
+                address,
+                arrivalAddress,
+                description,
+                transportMode: type === '이동' && transportMode ? (transportMode as TransportMode) : undefined,
+                duration: type === '이동' && transportMode ? duration : undefined,
+                distance: type === '이동' && transportMode ? distance : undefined,
+            });
             onClose();
         } else {
-            addItinerary({ travelId, type: type as ItineraryType, dayIndex: Number(dayIndex), time, endTime, content, address, arrivalAddress, description });
+            addItinerary({
+                travelId,
+                type: type as ItineraryType,
+                dayIndex: Number(dayIndex),
+                time,
+                endTime,
+                content,
+                address,
+                arrivalAddress,
+                description,
+                transportMode: type === '이동' && transportMode ? (transportMode as TransportMode) : undefined,
+                duration: type === '이동' && transportMode ? duration : undefined,
+                distance: type === '이동' && transportMode ? distance : undefined,
+            });
             // 저장 후 계속 추가할 때 시간 외 모든 정보 초기화
             setContent('');
             setAddress('');
@@ -225,6 +369,50 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                                 placeholder="지도 검색을 위한 주소"
                                 className="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 outline-none focus:ring-2 focus:ring-amber-500 transition-all"
                             />
+                        </div>
+                    )}
+
+                    {type === '이동' && (
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-bold text-blue-800 dark:text-blue-300">이동 옵션</label>
+                                {isCalculating && <span className="text-[10px] animate-pulse text-blue-600">계산 중...</span>}
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] mb-1 opacity-70">이동 수단</label>
+                                    <select
+                                        value={transportMode}
+                                        onChange={(e) => setTransportMode(e.target.value as TransportMode | '')}
+                                        className="w-full p-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800 outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="">선택 안함</option>
+                                        <option value="DRIVING">🚗 자동차</option>
+                                        <option value="TRANSIT">🚌 대중교통</option>
+                                        <option value="WALKING">🚶 도보</option>
+                                        <option value="BICYCLING">🚲 자전거</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] mb-1 opacity-70">예상 소요 시간 / 거리</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={duration}
+                                            onChange={(e) => setDuration(e.target.value)}
+                                            placeholder="시간"
+                                            className="w-full p-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800 outline-none"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={distance}
+                                            onChange={(e) => setDistance(e.target.value)}
+                                            placeholder="거리"
+                                            className="w-24 p-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
 

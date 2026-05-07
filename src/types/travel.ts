@@ -22,6 +22,8 @@ export interface TravelExportData {
   accommodations: Accommodation[];
 }
 
+export type TransportMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
+
 export type ItineraryType = '이동' | '관광' | '식사' | '기타';
 
 export const getTypeEmoji = (type: ItineraryType): string => {
@@ -30,6 +32,16 @@ export const getTypeEmoji = (type: ItineraryType): string => {
     case '관광': return '📸';
     case '식사': return '🍽️';
     default: return '📌';
+  }
+};
+
+export const getTransportInfo = (mode?: TransportMode): { label: string; emoji: string } => {
+  switch (mode) {
+    case 'DRIVING': return { label: '자동차', emoji: '🚗' };
+    case 'WALKING': return { label: '도보', emoji: '🚶' };
+    case 'BICYCLING': return { label: '자전거', emoji: '🚲' };
+    case 'TRANSIT': return { label: '대중교통', emoji: '🚌' };
+    default: return { label: '이동', emoji: '🏃' };
   }
 };
 
@@ -48,4 +60,7 @@ export interface Itinerary {
   lng?: number;
   arrivalLat?: number;
   arrivalLng?: number;
+  transportMode?: TransportMode;
+  duration?: string;
+  distance?: string;
 }
