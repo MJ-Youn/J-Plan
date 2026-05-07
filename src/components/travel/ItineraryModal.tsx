@@ -4,7 +4,7 @@ import { useTravelStore } from '../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useModal } from '../../hooks/useModal';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
-import type { TransportMode } from '../../types/travel';
+import type { TransportMode, Itinerary, ItineraryType } from '../../types/travel';
 
 interface Props {
     isOpen: boolean;

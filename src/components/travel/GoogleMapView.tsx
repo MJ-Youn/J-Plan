@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { APIProvider, Map as GoogleMap, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { Map as GoogleMap, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { Itinerary, ItineraryType, Accommodation } from '../../types/travel';
 import { getTypeEmoji } from '../../types/travel';
 import { useThemeStore } from '../../store/themeStore';
