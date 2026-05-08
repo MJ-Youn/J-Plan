@@ -11,9 +11,10 @@ interface Props {
     onClose: () => void;
     travelId: string;
     editTarget?: Itinerary | null;
+    defaultData?: Partial<Itinerary> | null;
 }
 
-const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget }) => {
+const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget, defaultData }) => {
     const { travels, addItinerary, updateItinerary } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
     const { handleDragStart, modalStyle } = useModal(isOpen, onClose);
@@ -50,8 +51,21 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 setTransportMode(editTarget.transportMode || '');
                 setDuration(editTarget.duration || '');
                 setDistance(editTarget.distance || '');
+            } else if (defaultData) {
+                // drag-to-add 등에 의한 기본값
+                setType(defaultData.type || '');
+                setDayIndex(defaultData.dayIndex ?? '');
+                setTime(defaultData.time || '');
+                setEndTime(defaultData.endTime || '');
+                setContent(defaultData.content || '');
+                setAddress(defaultData.address || '');
+                setArrivalAddress(defaultData.arrivalAddress || '');
+                setDescription(defaultData.description || '');
+                setTransportMode(defaultData.transportMode || '');
+                setDuration(defaultData.duration || '');
+                setDistance(defaultData.distance || '');
             } else {
-                // 기존 값이 남아있지 않도록 완전히 초기화
+                // 완전히 초기화
                 setType('');
                 setDayIndex('');
                 setTime('');
@@ -65,7 +79,7 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 setDistance('');
             }
         }
-    }, [editTarget, isOpen]);
+    }, [editTarget, defaultData, isOpen]);
 
     // 이동 소요 시간 자동 계산
     useEffect(() => {
@@ -153,7 +167,10 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
 
                 const element = response.rows[0].elements[0];
                 if (element.status === 'OK') {
-                    setDuration(element.duration.text);
+                    let durationText = element.duration.text;
+                    // 영문을 한글로 번역 (hour -> 시간, min -> 분, day -> 일)
+                    durationText = durationText.replace(/hours?/g, '시간').replace(/mins?/g, '분').replace(/days?/g, '일').replace(/\s+/g, ' ').trim();
+                    setDuration(durationText);
                     setDistance(element.distance.text);
                 } else if (element.status === 'ZERO_RESULTS') {
                     setDuration('경로 찾을 수 없음');
@@ -234,7 +251,7 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[1px] p-4">
             <div
                 data-modal-container
                 className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden"

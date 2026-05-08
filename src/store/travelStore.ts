@@ -21,6 +21,11 @@ interface TravelState {
     updateItinerary: (id: string, itinerary: Partial<Itinerary>) => Promise<void>;
     deleteItinerary: (id: string) => Promise<void>;
     importTravel: (data: TravelExportData) => Promise<void>;
+    
+    // 수동 저장을 위한 상태 및 함수
+    hasUnsavedChanges: boolean;
+    setHasUnsavedChanges: (val: boolean) => void;
+    saveTravelDetail: (travelId: string) => Promise<void>;
 }
 
 const LOCAL_STORAGE_KEY_TRAVELS = 'jplan_travels';
@@ -39,6 +44,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
     accommodations: [],
     itineraries: [],
     isLoading: false,
+    hasUnsavedChanges: false,
+
+    setHasUnsavedChanges: (val) => set({ hasUnsavedChanges: val }),
 
     /**
      * 전체 여행 목록을 조회합니다.
@@ -73,9 +81,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
             const saved = localStorage.getItem(getLocalDetailKey(id));
             if (saved) {
                 const data: TravelExportData = JSON.parse(saved);
-                set({ accommodations: data.accommodations || [], itineraries: data.itineraries || [] });
+                set({ accommodations: data.accommodations || [], itineraries: data.itineraries || [], hasUnsavedChanges: false });
             } else {
-                set({ accommodations: [], itineraries: [] });
+                set({ accommodations: [], itineraries: [], hasUnsavedChanges: false });
             }
             set({ isLoading: false });
             return;
@@ -85,7 +93,7 @@ export const useTravelStore = create<TravelState>((set, get) => ({
             const res = await fetch(`/api/data/travels/${id}`);
             if (res.ok) {
                 const data: TravelExportData = await res.json();
-                set({ accommodations: data.accommodations || [], itineraries: data.itineraries || [] });
+                set({ accommodations: data.accommodations || [], itineraries: data.itineraries || [], hasUnsavedChanges: false });
             }
         } catch (error) {
             console.error('[TravelStore] fetchTravelDetail failed:', error);
@@ -188,145 +196,77 @@ export const useTravelStore = create<TravelState>((set, get) => ({
     },
 
     /**
-     * 특정 여행의 숙소 정보를 설정합니다.
+     * 특정 여행의 숙소 정보를 설정합니다. (로컬 상태만 변경)
      */
-    setAccommodations: async (travelId, accs) => {
-        if (import.meta.env.DEV) {
-            const savedDetail = localStorage.getItem(getLocalDetailKey(travelId));
-            if (savedDetail) {
-                const fullData: TravelExportData = JSON.parse(savedDetail);
-                fullData.accommodations = accs;
-                localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(fullData));
-                set({ accommodations: accs });
-            }
-            return;
-        }
-
-        try {
-            const detailRes = await fetch(`/api/data/travels/${travelId}`);
-            if (!detailRes.ok) return;
-            const fullData: TravelExportData = await detailRes.json();
-            fullData.accommodations = accs;
-
-            const res = await fetch(`/api/data/travels/${travelId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(fullData),
-            });
-            if (res.ok) set({ accommodations: accs });
-        } catch (error) {
-            console.error('[TravelStore] setAccommodations failed:', error);
-        }
+    setAccommodations: async (_travelId, accs) => {
+        set({ accommodations: accs, hasUnsavedChanges: true });
     },
 
     /**
-     * 특정 여행에 새로운 일정을 추가합니다.
+     * 특정 여행에 새로운 일정을 추가합니다. (로컬 상태만 변경)
      */
     addItinerary: async (iti) => {
         const newIti = { ...iti, id: uuidv4() };
-        const travelId = iti.travelId;
-
-        if (import.meta.env.DEV) {
-            const savedDetail = localStorage.getItem(getLocalDetailKey(travelId));
-            if (savedDetail) {
-                const fullData: TravelExportData = JSON.parse(savedDetail);
-                fullData.itineraries.push(newIti);
-                localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(fullData));
-                set((state) => ({ itineraries: [...state.itineraries, newIti] }));
-            }
-            return;
-        }
-
-        try {
-            const detailRes = await fetch(`/api/data/travels/${travelId}`);
-            if (!detailRes.ok) return;
-            const fullData: TravelExportData = await detailRes.json();
-            fullData.itineraries.push(newIti);
-
-            const res = await fetch(`/api/data/travels/${travelId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(fullData),
-            });
-            if (res.ok) set((state) => ({ itineraries: [...state.itineraries, newIti] }));
-        } catch (error) {
-            console.error('[TravelStore] addItinerary failed:', error);
-        }
+        set((state) => ({ 
+            itineraries: [...state.itineraries, newIti],
+            hasUnsavedChanges: true
+        }));
     },
 
     /**
-     * 기존 일정을 수정합니다.
+     * 기존 일정을 수정합니다. (로컬 상태만 변경)
      */
     updateItinerary: async (id, updated) => {
-        const iti = get().itineraries.find((i) => i.id === id);
-        if (!iti) return;
-        const travelId = iti.travelId;
-
-        if (import.meta.env.DEV) {
-            const savedDetail = localStorage.getItem(getLocalDetailKey(travelId));
-            if (savedDetail) {
-                const fullData: TravelExportData = JSON.parse(savedDetail);
-                const newItis = fullData.itineraries.map((i) => (i.id === id ? { ...i, ...updated } : i));
-                fullData.itineraries = newItis;
-                localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(fullData));
-                set({ itineraries: newItis });
-            }
-            return;
-        }
-
-        try {
-            const detailRes = await fetch(`/api/data/travels/${travelId}`);
-            if (!detailRes.ok) return;
-            const fullData: TravelExportData = await detailRes.json();
-            const newItis = fullData.itineraries.map((i) => (i.id === id ? { ...i, ...updated } : i));
-            fullData.itineraries = newItis;
-
-            const res = await fetch(`/api/data/travels/${travelId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(fullData),
-            });
-            if (res.ok) set({ itineraries: newItis });
-        } catch (error) {
-            console.error('[TravelStore] updateItinerary failed:', error);
-        }
+        set((state) => ({
+            itineraries: state.itineraries.map((i) => (i.id === id ? { ...i, ...updated } : i)),
+            hasUnsavedChanges: true
+        }));
     },
 
     /**
-     * 특정 일정을 삭제합니다.
+     * 특정 일정을 삭제합니다. (로컬 상태만 변경)
      */
     deleteItinerary: async (id) => {
-        const iti = get().itineraries.find((i) => i.id === id);
-        if (!iti) return;
-        const travelId = iti.travelId;
+        set((state) => ({
+            itineraries: state.itineraries.filter((i) => i.id !== id),
+            hasUnsavedChanges: true
+        }));
+    },
+
+    /**
+     * 메모리에 들고 있던 변경 사항(일정, 숙소)을 DB에 최종 저장합니다.
+     */
+    saveTravelDetail: async (travelId) => {
+        const state = get();
+        const travel = state.travels.find((t) => t.id === travelId);
+        if (!travel) return;
+
+        const fullData: TravelExportData = {
+            version: '1.0',
+            travel,
+            itineraries: state.itineraries,
+            accommodations: state.accommodations,
+        };
 
         if (import.meta.env.DEV) {
-            const savedDetail = localStorage.getItem(getLocalDetailKey(travelId));
-            if (savedDetail) {
-                const fullData: TravelExportData = JSON.parse(savedDetail);
-                const newItis = fullData.itineraries.filter((i) => i.id !== id);
-                fullData.itineraries = newItis;
-                localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(fullData));
-                set({ itineraries: newItis });
-            }
+            localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(fullData));
+            set({ hasUnsavedChanges: false });
             return;
         }
 
         try {
-            const detailRes = await fetch(`/api/data/travels/${travelId}`);
-            if (!detailRes.ok) return;
-            const fullData: TravelExportData = await detailRes.json();
-            const newItis = fullData.itineraries.filter((i) => i.id !== id);
-            fullData.itineraries = newItis;
-
             const res = await fetch(`/api/data/travels/${travelId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(fullData),
             });
-            if (res.ok) set({ itineraries: newItis });
+            if (res.ok) {
+                set({ hasUnsavedChanges: false });
+            } else {
+                console.error('[TravelStore] Failed to save to DB');
+            }
         } catch (error) {
-            console.error('[TravelStore] deleteItinerary failed:', error);
+            console.error('[TravelStore] saveTravelDetail failed:', error);
         }
     },
 

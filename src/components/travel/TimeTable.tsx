@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X, Navigation } from 'lucide-react';
 import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
 import { getTypeEmoji, getTransportInfo } from '../../types/travel';
@@ -9,12 +9,12 @@ interface Props {
     selectedDay: number | 'all';
     isMapExpanded: boolean;
     totalDays: number;
+    travelId: string;
     selectedItineraryId: string | null;
     onItineraryClick: (id: string) => void;
     onEdit: (e: React.MouseEvent, iti: Itinerary) => void;
     onDelete: (e: React.MouseEvent, id: string) => void;
-    /** 미저장 변경 사항 유무를 부모에게 알림 */
-    onHasPendingChanges?: (hasPending: boolean) => void;
+    onAddItinerary?: (defaultData: Partial<Itinerary>) => void;
 }
 
 type ProcessedItinerary = Itinerary & {
@@ -22,12 +22,7 @@ type ProcessedItinerary = Itinerary & {
     endMins: number;
 };
 
-/** 미저장 변경 사항 타입 */
-type PendingChange = {
-    id: string;
-    time: string;
-    endTime?: string;
-};
+
 
 const parseTime = (timeStr: string) => {
     const [h, m] = timeStr.split(':').map(Number);
@@ -42,14 +37,10 @@ const formatTime = (mins: number) => {
     return `${h}:${m}`;
 };
 
-const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, selectedItineraryId, onItineraryClick, onEdit, onDelete, onHasPendingChanges }) => {
-    const { updateItinerary } = useTravelStore();
+const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, travelId, selectedItineraryId, onItineraryClick, onEdit, onDelete, onAddItinerary }) => {
+    const { updateItinerary, hasUnsavedChanges, saveTravelDetail, fetchTravelDetail } = useTravelStore();
     const HOUR_HEIGHT = 160;
     const MIN_HEIGHT = 40;
-
-    // 미저장 변경 사항 (시간 드래그/스왑 결과를 즉시 반영하지 않고 누적)
-    const [pendingChanges, setPendingChanges] = useState<Record<string, PendingChange>>({});
-    const hasPendingChanges = Object.keys(pendingChanges).length > 0;
 
     // 리사이즈 상태 관리
     const [resizeInfo, setResizeInfo] = useState<{
@@ -65,49 +56,53 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         maxBound: number;
     } | null>(null);
 
+    // 이동 상태 관리
+    const [moveInfo, setMoveInfo] = useState<{
+        id: string;
+        startY: number;
+        initialStartMins: number;
+        initialEndMins: number;
+        currentStartMins: number;
+        currentEndMins: number;
+        dayIndex: number;
+    } | null>(null);
+
     // 드래그 앤 드롭 스왑 상태
     const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-    // hasPendingChanges 변경 시 부모에 알림
-    useEffect(() => {
-        onHasPendingChanges?.(hasPendingChanges);
-    }, [hasPendingChanges, onHasPendingChanges]);
+    // 바탕 드래그로 일정 추가 상태
+    const [dragCreateState, setDragCreateState] = useState<{
+        dayIndex: number;
+        startMins: number;
+        endMins: number;
+        startY: number;
+    } | null>(null);
 
     // ─── 이탈 경고 (브라우저 새로고침/탭 닫기) ───────────────
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
-            if (hasPendingChanges) {
+            if (hasUnsavedChanges) {
                 e.preventDefault();
                 e.returnValue = '';
             }
         };
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
-    }, [hasPendingChanges]);
+    }, [hasUnsavedChanges]);
 
     // ─── 저장 / 초기화 ────────────────────────────────────────
     const handleSaveAll = useCallback(async () => {
-        const updates = Object.values(pendingChanges);
-        for (const change of updates) {
-            await updateItinerary(change.id, { time: change.time, endTime: change.endTime });
-        }
-        setPendingChanges({});
-    }, [pendingChanges, updateItinerary]);
+        await saveTravelDetail(travelId);
+    }, [saveTravelDetail, travelId]);
 
-    const handleDiscardAll = useCallback(() => {
-        if (window.confirm('변경 사항을 취소하시겠습니까?')) {
-            setPendingChanges({});
+    const handleDiscardAll = useCallback(async () => {
+        if (window.confirm('변경 사항을 취소하시겠습니까? (원래 상태로 되돌립니다)')) {
+            await fetchTravelDetail(travelId);
         }
-    }, []);
+    }, [fetchTravelDetail, travelId]);
 
-    // pending 변경 사항을 반영한 itinerary 목록 (렌더링용)
-    const effectiveItineraries = useMemo(() => {
-        return itineraries.map((iti) => {
-            const pending = pendingChanges[iti.id];
-            if (pending) return { ...iti, time: pending.time, endTime: pending.endTime };
-            return iti;
-        });
-    }, [itineraries, pendingChanges]);
+    // pending 변경 사항 로직 걷어냄 (store가 관리)
+    const effectiveItineraries = itineraries;
 
     // 모든 일정 전처리 (시작/종료 시간 분 단위 계산)
     const allProcessedEvents = useMemo(() => {
@@ -163,54 +158,124 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         });
     };
 
+    // ─── 이동 핸들러 ──────────────────────────────────────────
+    const handleMoveStart = (e: React.MouseEvent, ev: ProcessedItinerary) => {
+        // 이미 리사이즈 중이거나 버튼을 클릭한 경우 무시
+        if (resizeInfo || (e.target as HTMLElement).closest('button')) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+
+        setDragOverId(null); // 드래그 시작 시 초기화
+
+        setMoveInfo({
+            id: ev.id,
+            startY: e.pageY,
+            initialStartMins: ev.startMins,
+            initialEndMins: ev.endMins,
+            currentStartMins: ev.startMins,
+            currentEndMins: ev.endMins,
+            dayIndex: ev.dayIndex,
+        });
+    };
+
     // ─── 드래그 앤 드롭 스왑 핸들러 ──────────────────────────
     const handleSwap = (sourceId: string, targetId: string) => {
         const source = effectiveItineraries.find((i) => i.id === sourceId);
         const target = effectiveItineraries.find((i) => i.id === targetId);
         if (source && target) {
-            setPendingChanges((prev) => ({
-                ...prev,
-                [sourceId]: { id: sourceId, time: target.time, endTime: target.endTime },
-                [targetId]: { id: targetId, time: source.time, endTime: source.endTime },
-            }));
+            // 시간뿐만 아니라 일차(dayIndex)도 함께 스왑
+            updateItinerary(sourceId, { 
+                time: target.time, 
+                endTime: target.endTime, 
+                dayIndex: target.dayIndex 
+            });
+            updateItinerary(targetId, { 
+                time: source.time, 
+                endTime: source.endTime, 
+                dayIndex: source.dayIndex 
+            });
         }
     };
 
     // ─── 마우스 이벤트 (리사이즈) ─────────────────────────────
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
-            if (!resizeInfo) return;
+            if (resizeInfo) {
+                const deltaY = e.pageY - resizeInfo.startY;
+                const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
 
-            const deltaY = e.pageY - resizeInfo.startY;
-            const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+                if (resizeInfo.type === 'top') {
+                    let newStart = resizeInfo.initialStartMins + deltaMins;
+                    newStart = Math.max(resizeInfo.minBound, Math.min(newStart, resizeInfo.initialEndMins - 15));
+                    setResizeInfo((prev) => (prev ? { ...prev, currentStartMins: newStart } : null));
+                } else {
+                    let newEnd = resizeInfo.initialEndMins + deltaMins;
+                    newEnd = Math.max(resizeInfo.initialStartMins + 15, Math.min(newEnd, resizeInfo.maxBound));
+                    setResizeInfo((prev) => (prev ? { ...prev, currentEndMins: newEnd } : null));
+                }
+            } else if (moveInfo) {
+                const deltaY = e.pageY - moveInfo.startY;
+                const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+                
+                const duration = moveInfo.initialEndMins - moveInfo.initialStartMins;
+                let newStart = moveInfo.initialStartMins + deltaMins;
+                
+                // 범위 제한 (00:00 ~ 24:00)
+                newStart = Math.max(0, Math.min(newStart, 24 * 60 - duration));
+                const newEnd = newStart + duration;
 
-            if (resizeInfo.type === 'top') {
-                let newStart = resizeInfo.initialStartMins + deltaMins;
-                newStart = Math.max(resizeInfo.minBound, Math.min(newStart, resizeInfo.initialEndMins - 15));
-                setResizeInfo((prev) => (prev ? { ...prev, currentStartMins: newStart } : null));
-            } else {
-                let newEnd = resizeInfo.initialEndMins + deltaMins;
-                newEnd = Math.max(resizeInfo.initialStartMins + 15, Math.min(newEnd, resizeInfo.maxBound));
-                setResizeInfo((prev) => (prev ? { ...prev, currentEndMins: newEnd } : null));
+                // 충돌 검사: 이동할 자리에 다른 일정이 있는지 확인
+                const hasCollision = allProcessedEvents.some(other => 
+                    other.id !== moveInfo.id && 
+                    other.dayIndex === moveInfo.dayIndex && 
+                    newStart < other.endMins && 
+                    newEnd > other.startMins
+                );
+
+                if (!hasCollision) {
+                    setMoveInfo(prev => prev ? { ...prev, currentStartMins: newStart, currentEndMins: newEnd } : null);
+                }
+            } else if (dragCreateState) {
+                const deltaY = e.pageY - dragCreateState.startY;
+                const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
+                let newEnd = dragCreateState.startMins + 30 + deltaMins;
+                newEnd = Math.max(dragCreateState.startMins + 15, newEnd); // 최소 15분
+                setDragCreateState((prev) => (prev ? { ...prev, endMins: newEnd } : null));
             }
         };
 
         const handleMouseUp = () => {
             if (resizeInfo) {
-                // 즉시 저장 대신 pendingChanges에 누적
-                setPendingChanges((prev) => ({
-                    ...prev,
-                    [resizeInfo.id]: {
-                        id: resizeInfo.id,
-                        time: formatTime(resizeInfo.currentStartMins),
-                        endTime: formatTime(resizeInfo.currentEndMins),
-                    },
-                }));
+                // 스토어에 즉시 반영 (hasUnsavedChanges 활성화됨)
+                updateItinerary(resizeInfo.id, {
+                    time: formatTime(resizeInfo.currentStartMins),
+                    endTime: formatTime(resizeInfo.currentEndMins),
+                });
                 setResizeInfo(null);
             }
+            if (moveInfo) {
+                if (dragOverId) {
+                    handleSwap(moveInfo.id, dragOverId);
+                } else {
+                    updateItinerary(moveInfo.id, {
+                        time: formatTime(moveInfo.currentStartMins),
+                        endTime: formatTime(moveInfo.currentEndMins),
+                    });
+                }
+                setMoveInfo(null);
+                setDragOverId(null);
+            }
+            if (dragCreateState) {
+                onAddItinerary?.({
+                    dayIndex: dragCreateState.dayIndex,
+                    time: formatTime(dragCreateState.startMins),
+                    endTime: formatTime(dragCreateState.endMins),
+                });
+                setDragCreateState(null);
+            }
         };
-
-        if (resizeInfo) {
+        if (resizeInfo || moveInfo || dragCreateState) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
         }
@@ -218,7 +283,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [resizeInfo]);
+    }, [resizeInfo, moveInfo, dragOverId, dragCreateState, onAddItinerary, updateItinerary, allProcessedEvents]);
 
     // ─── 이벤트 렌더링 ────────────────────────────────────────
     const renderEventsForColumn = (colId: number | 'all', events: ProcessedItinerary[], startHour: number) => {
@@ -242,62 +307,92 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             if (resizeInfo && resizeInfo.id === ev.id) {
                 return { start: resizeInfo.currentStartMins, end: resizeInfo.currentEndMins };
             }
+            if (moveInfo && moveInfo.id === ev.id) {
+                return { start: moveInfo.currentStartMins, end: moveInfo.currentEndMins };
+            }
             return { start: ev.startMins, end: ev.endMins };
         };
 
-        return placed.map((p) => {
+        const elements: React.ReactNode[] = placed.map((p, index) => {
             const { start, end } = getEffectiveMins(p.event);
             const top = ((start - startHour * 60) / 60) * HOUR_HEIGHT;
-            const height = Math.max(((end - start) / 60) * HOUR_HEIGHT, MIN_HEIGHT);
+            let height = ((end - start) / 60) * HOUR_HEIGHT;
+            height = Math.max(height, MIN_HEIGHT);
+
+            const isShortEvent = end - start <= 30;
+
+            const formatDurationToKorean = (str: string) => {
+                return str.replace(/hours?/g, '시간').replace(/mins?/g, '분').replace(/days?/g, '일').replace(/\s+/g, ' ').trim();
+            };
 
             const widthPct = 100 / (maxCol + 1);
             const leftPct = p.col * widthPct;
-            const isSelected = selectedItineraryId === p.event.id;
-            const isPending = !!pendingChanges[p.event.id];
+            const nextP = placed[index + 1];
+            const isMoveableBetween = nextP && p.event.type !== '이동' && nextP.event.type !== '이동';
 
-            const duration = p.event.endMins - p.event.startMins;
-            const isShortEvent = duration <= 30;
+            const handleAddMoveBetween = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                if (!nextP) return;
+
+                const first = p.event;
+                const second = nextP.event;
+                const firstEnd = getEffectiveMins(first).end;
+                const secondStart = getEffectiveMins(second).start;
+
+                let startMins = firstEnd;
+                let endMins = secondStart;
+
+                // 30분 이내일 경우 30분 확보 (전후 15분씩)
+                if (endMins - startMins < 30) {
+                    startMins = Math.max(0, firstEnd - 15);
+                    endMins = Math.min(24 * 60 - 1, secondStart + 15);
+                }
+
+                onAddItinerary?.({
+                    type: '이동',
+                    dayIndex: first.dayIndex,
+                    content: `${first.address} -> ${second.address} 이동`,
+                    address: first.address,
+                    arrivalAddress: second.address,
+                    time: formatTime(startMins),
+                    endTime: formatTime(endMins),
+                });
+            };
+
+            const isSelected = selectedItineraryId === p.event.id;
+            // 스토어 상태 변경 시 모두 hasUnsavedChanges로 묶이므로 개별 미저장 상태 대신 전역 상태 사용
 
             return (
                 <div
                     key={p.event.id}
                     id={`itinerary-${p.event.id}`}
-                    draggable
-                    onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', p.event.id);
-                        e.dataTransfer.effectAllowed = 'move';
+                    className={`itinerary-event absolute p-2 shadow-sm hover:shadow-md transition-all cursor-pointer group rounded-none border-t border-b border-r ${isShortEvent ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'} ${
+                        isSelected
+                            ? 'border-amber-500 ring-2 ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30'
+                            : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
+                    } ${resizeInfo?.id === p.event.id || moveInfo?.id === p.event.id ? 'z-30 opacity-90 shadow-xl border-amber-400' : ''} ${dragOverId === p.event.id ? 'ring-4 ring-blue-400 z-30' : ''}`}
+                    style={{ 
+                        top, 
+                        height: height + 1, 
+                        left: `${leftPct}%`, 
+                        width: `${widthPct}%`, 
+                        marginTop: '-1px', 
+                        cursor: moveInfo?.id === p.event.id ? 'grabbing' : 'pointer',
+                        pointerEvents: moveInfo?.id === p.event.id ? 'none' : 'auto'
                     }}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOverId(p.event.id);
+                    onMouseDown={(e) => handleMoveStart(e, p.event)}
+                    onMouseEnter={() => {
+                        if (moveInfo && moveInfo.id !== p.event.id) {
+                            setDragOverId(p.event.id);
+                        }
                     }}
-                    onDragLeave={() => setDragOverId(null)}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        setDragOverId(null);
-                        const sourceId = e.dataTransfer.getData('text/plain');
-                        const targetId = p.event.id;
-                        if (sourceId && sourceId !== targetId) {
-                            handleSwap(sourceId, targetId);
+                    onMouseLeave={() => {
+                        if (moveInfo && dragOverId === p.event.id) {
+                            setDragOverId(null);
                         }
                     }}
                     onClick={() => onItineraryClick(p.event.id)}
-                    className={`absolute p-2 shadow-sm hover:shadow-md transition-all cursor-pointer group rounded-none border-t border-b border-r ${isShortEvent ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'} ${
-                        isSelected
-                            ? 'border-amber-500 ring-2 ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30'
-                            : isPending
-                              ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/20'
-                              : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
-                    } ${resizeInfo?.id === p.event.id ? 'z-30 opacity-90 shadow-xl border-amber-400' : ''} ${dragOverId === p.event.id ? 'ring-4 ring-blue-400 z-30' : ''}`}
-                    style={{ top, height: height + 1, left: `${leftPct}%`, width: `${widthPct}%`, marginTop: '-1px' }}
                 >
-                    {/* 미저장 변경 인디케이터 */}
-                    {isPending && (
-                        <span
-                            className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-400"
-                            title="미저장 변경 사항"
-                        />
-                    )}
 
                     {/* Resize Handles */}
                     <div
@@ -317,6 +412,15 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                             {colId === 'all' && maxCol > 0 && <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-zinc-700 px-1 rounded">{p.event.dayIndex}일차</span>}
                         </div>
                         <div className="hidden group-hover:flex space-x-1 shrink-0 bg-white/80 dark:bg-gray-800/80 rounded p-0.5">
+                            {isMoveableBetween && (
+                                <button
+                                    onClick={handleAddMoveBetween}
+                                    className="text-gray-400 hover:text-green-500 transition-colors"
+                                    title="다음 일정과 사이에 이동 추가"
+                                >
+                                    <Navigation size={12} />
+                                </button>
+                            )}
                             <button
                                 onClick={(e) => onEdit(e, p.event)}
                                 className="text-gray-400 hover:text-blue-500"
@@ -341,7 +445,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                             </span>
                             {p.event.type === '이동' && (p.event.duration || p.event.distance) && (
                                 <span className="text-blue-500 dark:text-blue-400 font-medium ml-1">
-                                    ({p.event.duration}
+                                    ({p.event.duration ? formatDurationToKorean(p.event.duration) : ''}
                                     {p.event.duration && p.event.distance ? ' / ' : ''}
                                     {p.event.distance})
                                 </span>
@@ -367,7 +471,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                             {p.event.arrivalAddress}
                                             {(p.event.duration || p.event.distance) && (
                                                 <span className="ml-2 text-blue-600 dark:text-blue-400 font-bold text-[10px] sm:text-xs whitespace-nowrap">
-                                                    ({getTransportInfo(p.event.transportMode).emoji} {p.event.duration}
+                                                    ({getTransportInfo(p.event.transportMode).emoji} {p.event.duration ? formatDurationToKorean(p.event.duration) : ''}
                                                     {p.event.duration && p.event.distance ? ' · ' : ''}
                                                     {p.event.distance})
                                                 </span>
@@ -381,6 +485,30 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                 </div>
             );
         });
+        
+        // 드래그해서 생성 중인 임시 블록 표시
+        if (dragCreateState && (colId === 'all' ? 1 : colId) === dragCreateState.dayIndex) {
+            const start = dragCreateState.startMins;
+            const end = dragCreateState.endMins;
+            const top = ((start - startHour * 60) / 60) * HOUR_HEIGHT;
+            let height = ((end - start) / 60) * HOUR_HEIGHT;
+            height = Math.max(height, MIN_HEIGHT);
+            
+            elements.push(
+                <div
+                    key="drag-create-preview"
+                    className="absolute p-2 shadow-sm rounded-none border-t border-b border-r border-blue-400 bg-blue-50/50 dark:bg-blue-900/30 z-40 opacity-80"
+                    style={{ top, height: height + 1, left: '0%', width: '100%', marginTop: '-1px' }}
+                >
+                    <div className="text-xs text-blue-600 font-bold">
+                        {formatTime(start)} - {formatTime(end)}
+                    </div>
+                    <div className="text-xs text-blue-500">일정 추가 중...</div>
+                </div>
+            );
+        }
+
+        return elements;
     };
 
     // ─── 단일 그리드 컴포넌트 ─────────────────────────────────
@@ -448,6 +576,25 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                 <div
                                     key={col.id}
                                     className="flex-1 relative border-r border-gray-200 dark:border-gray-700 last:border-r-0"
+                                    onMouseDown={(e) => {
+                                        // 이미 존재하는 이벤트나 리사이즈 핸들을 클릭한 경우 무시
+                                        if ((e.target as HTMLElement).closest('.itinerary-event')) return;
+                                        if ((e.target as HTMLElement).closest('.cursor-ns-resize')) return;
+                                        
+                                        const dayIndex = col.id === 'all' ? 1 : (col.id as number);
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const y = e.clientY - rect.top;
+                                        const minsFromTop = (y / HOUR_HEIGHT) * 60;
+                                        let startMins = Math.floor((startHour * 60 + minsFromTop) / 15) * 15;
+                                        startMins = Math.max(0, startMins);
+
+                                        setDragCreateState({
+                                            dayIndex,
+                                            startMins,
+                                            endMins: startMins + 30, // 최소 30분
+                                            startY: e.pageY,
+                                        });
+                                    }}
                                 >
                                     {renderEventsForColumn(col.id, events, startHour)}
                                 </div>
@@ -464,9 +611,9 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
     return (
         <div className="flex flex-col h-full bg-white dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden print:border-none print:overflow-visible print:h-auto print:block">
             {/* ── 미저장 변경 사항 알림 배너 ── */}
-            {hasPendingChanges && pendingChanges && (
+            {hasUnsavedChanges && (
                 <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 shrink-0">
-                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">⚠️ {Object.keys(pendingChanges || {}).length}개의 미저장 변경 사항이 있습니다.</span>
+                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">⚠️ 미저장 변경 사항이 있습니다. 확정하려면 저장 버튼을 눌러주세요.</span>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleDiscardAll}

@@ -30,9 +30,8 @@ const TravelDetail: React.FC = () => {
     const [selectedItineraryId, setSelectedItineraryId] = useState<string | null>(null);
     const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Itinerary | null>(null);
+    const [addModalData, setAddModalData] = useState<Partial<Itinerary> | null>(null);
     const [isAccModalOpen, setIsAccModalOpen] = useState(false);
-    // TimeTable에서 올라오는 미저장 변경 상태
-    const [, setHasPendingChanges] = useState(false);
 
     const travel = travels.find((t) => t.id === id);
 
@@ -118,6 +117,7 @@ const TravelDetail: React.FC = () => {
                 onOpenAccModal={() => setIsAccModalOpen(true)}
                 onOpenNewItinerary={() => {
                     setEditTarget(null);
+                    setAddModalData(null);
                     setIsItineraryModalOpen(true);
                 }}
             />
@@ -168,23 +168,26 @@ const TravelDetail: React.FC = () => {
                         />
 
                         <div className="flex-1 overflow-y-auto scrollbar-thin print:overflow-visible">
-                            {filteredItineraries.length === 0 ? (
-                                <div className="text-center py-10 text-gray-400 text-sm">등록된 일정이 없습니다.</div>
-                            ) : (
                                 <TimeTable
                                     itineraries={filteredItineraries}
                                     selectedDay={selectedDay}
                                     isMapExpanded={isMapExpanded}
                                     totalDays={totalDays}
+                                    travelId={id!}
                                     selectedItineraryId={selectedItineraryId}
-                                    onHasPendingChanges={setHasPendingChanges}
                                     onItineraryClick={(itiId) => {
                                         setSelectedItineraryId(itiId);
                                         if (window.innerWidth < 1024) setActiveTab('map');
                                     }}
+                                    onAddItinerary={(defaultData) => {
+                                        setEditTarget(null);
+                                        setAddModalData(defaultData);
+                                        setIsItineraryModalOpen(true);
+                                    }}
                                     onEdit={(e, iti) => {
                                         e.stopPropagation();
                                         setEditTarget(iti);
+                                        setAddModalData(null);
                                         setIsItineraryModalOpen(true);
                                     }}
                                     onDelete={(e, itiId) => {
@@ -192,7 +195,6 @@ const TravelDetail: React.FC = () => {
                                         if (window.confirm('일정을 삭제하시겠습니까?')) deleteItinerary(itiId);
                                     }}
                                 />
-                            )}
                         </div>
                     </div>
                 </div>
@@ -217,6 +219,7 @@ const TravelDetail: React.FC = () => {
                 onClose={() => setIsItineraryModalOpen(false)}
                 travelId={id!}
                 editTarget={editTarget}
+                defaultData={addModalData}
             />
             <AccommodationModal
                 isOpen={isAccModalOpen}
