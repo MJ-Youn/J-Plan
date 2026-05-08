@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
 /**
@@ -10,10 +10,17 @@ import { useAuthStore } from '../../store/authStore';
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user, isLoading, checkAuth } = useAuthStore();
+    const navigate = useNavigate();
 
     React.useEffect(() => {
         checkAuth();
     }, [checkAuth]);
+
+    React.useEffect(() => {
+        if (!isLoading && !user) {
+            navigate('/login', { replace: true });
+        }
+    }, [user, isLoading, navigate]);
 
     if (isLoading) {
         return (
@@ -24,12 +31,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     }
 
     if (!user) {
-        return (
-            <Navigate
-                to="/login"
-                replace
-            />
-        );
+        return null; // navigate 대기 중에는 아무것도 그리지 않음
     }
 
     return <>{children}</>;
