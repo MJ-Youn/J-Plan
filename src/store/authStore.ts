@@ -72,19 +72,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     },
 
     /**
-     * 로그아웃을 수행하고 사용자 상태를 초기화합니다.
+     * 로그아웃을 수행하고 로그인 페이지로 리다이렉트합니다.
+     * window.location.href를 사용하여 전체 페이지를 초기화합니다.
+     * (React 19 + React Router v7 의 Navigate 렌더링 충돌 방지)
      */
     logout: async () => {
         if (import.meta.env.DEV) {
             set({ user: null });
+            window.location.href = '/login';
             return;
         }
 
         try {
             await fetch('/api/auth/logout', { method: 'POST' });
-            set({ user: null });
         } catch (error) {
             console.error('[AuthStore] Failed to logout:', error);
+        } finally {
+            set({ user: null });
+            window.location.href = '/login';
         }
     },
 }));
