@@ -464,9 +464,9 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
     return (
         <div className="flex flex-col h-full bg-white dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden print:border-none print:overflow-visible print:h-auto print:block">
             {/* ── 미저장 변경 사항 알림 배너 ── */}
-            {hasPendingChanges && (
+            {hasPendingChanges && pendingChanges && (
                 <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 shrink-0">
-                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">⚠️ {Object.keys(pendingChanges).length}개의 미저장 변경 사항이 있습니다.</span>
+                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">⚠️ {Object.keys(pendingChanges || {}).length}개의 미저장 변경 사항이 있습니다.</span>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleDiscardAll}

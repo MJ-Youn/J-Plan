@@ -31,9 +31,8 @@ const TravelDetail: React.FC = () => {
     const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Itinerary | null>(null);
     const [isAccModalOpen, setIsAccModalOpen] = useState(false);
-    // TimeTable에서 올라오는 미저장 변경 상태 (현재는 beforeunload 경고에만 사용)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [_hasPendingChanges, setHasPendingChanges] = useState(false);
+    // TimeTable에서 올라오는 미저장 변경 상태
+    const [, setHasPendingChanges] = useState(false);
 
     const travel = travels.find((t) => t.id === id);
 

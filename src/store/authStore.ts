@@ -63,6 +63,7 @@ export const useAuthStore = create<AuthState>((set) => ({
                 const data = await response.json();
                 set({ user: data.user, isLoading: false });
             } else {
+                // 401 Unauthorized 또는 다른 에러 발생 시 사용자 정보 초기화
                 set({ user: null, isLoading: false });
             }
         } catch (error) {
