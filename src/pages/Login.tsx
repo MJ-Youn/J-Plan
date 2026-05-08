@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { LogIn, Map as MapIcon, ShieldCheck, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Map as MapIcon, Sparkles, ShieldCheck, LogIn } from 'lucide-react';
-import Turnstile from 'react-turnstile';
-import { useAuthStore, MOCK_USER } from '../store/authStore';
+import { Turnstile } from '@marsidev/react-turnstile';
+import { MOCK_USER, useAuthStore } from '../store/authStore';
 
 /**
  * 로그인 페이지 컴포넌트입니다.
@@ -95,9 +95,11 @@ const Login: React.FC = () => {
                                 보안 검증
                             </div>
                             <Turnstile
-                                sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'}
-                                onVerify={(t) => setToken(t)}
-                                theme="auto"
+                                siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'}
+                                onSuccess={(t) => setToken(t)}
+                                options={{
+                                    theme: 'auto',
+                                }}
                             />
                         </div>
                     ) : (
