@@ -168,33 +168,34 @@ const TravelDetail: React.FC = () => {
                         />
 
                         <div className="flex-1 overflow-y-auto scrollbar-thin print:overflow-visible">
-                                <TimeTable
-                                    itineraries={filteredItineraries}
-                                    selectedDay={selectedDay}
-                                    isMapExpanded={isMapExpanded}
-                                    totalDays={totalDays}
-                                    travelId={id!}
-                                    selectedItineraryId={selectedItineraryId}
-                                    onItineraryClick={(itiId) => {
-                                        setSelectedItineraryId(itiId);
-                                        if (window.innerWidth < 1024) setActiveTab('map');
-                                    }}
-                                    onAddItinerary={(defaultData) => {
-                                        setEditTarget(null);
-                                        setAddModalData(defaultData);
-                                        setIsItineraryModalOpen(true);
-                                    }}
-                                    onEdit={(e, iti) => {
-                                        e.stopPropagation();
-                                        setEditTarget(iti);
-                                        setAddModalData(null);
-                                        setIsItineraryModalOpen(true);
-                                    }}
-                                    onDelete={(e, itiId) => {
-                                        e.stopPropagation();
-                                        if (window.confirm('일정을 삭제하시겠습니까?')) deleteItinerary(itiId);
-                                    }}
-                                />
+                            <TimeTable
+                                itineraries={filteredItineraries}
+                                selectedDay={selectedDay}
+                                isMapExpanded={isMapExpanded}
+                                totalDays={totalDays}
+                                travelId={id!}
+                                selectedItineraryId={selectedItineraryId}
+                                onItineraryClick={(itiId) => {
+                                    // selectedItineraryId 변경 시 GoogleMapView 내부 useEffect가 panTo를 실행함
+                                    // (onMarkerClick과 동일한 경로로 동작)
+                                    setSelectedItineraryId(itiId);
+                                }}
+                                onAddItinerary={(defaultData) => {
+                                    setEditTarget(null);
+                                    setAddModalData(defaultData);
+                                    setIsItineraryModalOpen(true);
+                                }}
+                                onEdit={(e, iti) => {
+                                    e.stopPropagation();
+                                    setEditTarget(iti);
+                                    setAddModalData(null);
+                                    setIsItineraryModalOpen(true);
+                                }}
+                                onDelete={(e, itiId) => {
+                                    e.stopPropagation();
+                                    if (window.confirm('일정을 삭제하시겠습니까?')) deleteItinerary(itiId);
+                                }}
+                            />
                         </div>
                     </div>
                 </div>
