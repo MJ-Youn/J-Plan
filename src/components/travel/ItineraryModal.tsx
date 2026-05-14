@@ -177,7 +177,7 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 const response = await service.getDistanceMatrix({
                     origins: [startLoc],
                     destinations: [endLoc],
-                    travelMode: google.maps.TravelMode[transportMode as TransportMode],
+                    travelMode: google.maps.TravelMode[transportMode as keyof typeof google.maps.TravelMode],
                 });
 
                 const element = response.rows[0].elements[0];

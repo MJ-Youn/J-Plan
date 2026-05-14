@@ -17,7 +17,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
 
 /**
  * 테마 상태를 관리하는 Zustand 스토어입니다.
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */

@@ -7,7 +7,7 @@ import { getTypeEmoji, getTransportInfo } from '../../types/travel';
 
 /**
  * 지도 컴포넌트의 Props 인터페이스
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */

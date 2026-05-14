@@ -21,7 +21,7 @@ interface TravelState {
     updateItinerary: (id: string, itinerary: Partial<Itinerary>) => Promise<void>;
     deleteItinerary: (id: string) => Promise<void>;
     importTravel: (data: TravelExportData) => Promise<void>;
-    
+
     // 수동 저장을 위한 상태 및 함수
     hasUnsavedChanges: boolean;
     setHasUnsavedChanges: (val: boolean) => void;
@@ -122,8 +122,8 @@ export const useTravelStore = create<TravelState>((set, get) => ({
                 body: JSON.stringify(newTravel),
             });
             if (res.ok) {
-            set((state) => ({ travels: [...state.travels, newTravel] }));
-        }
+                set((state) => ({ travels: [...state.travels, newTravel] }));
+            }
         } catch (error) {
             console.error('[TravelStore] addTravel failed:', error);
         }
@@ -155,8 +155,8 @@ export const useTravelStore = create<TravelState>((set, get) => ({
         try {
             const detailRes = await fetch(`/api/data/travels/${id}`);
             if (!detailRes.ok) {
-            return;
-        }
+                return;
+            }
             const fullData: TravelExportData = await detailRes.json();
             fullData.travel = newTravel;
 
@@ -166,8 +166,8 @@ export const useTravelStore = create<TravelState>((set, get) => ({
                 body: JSON.stringify(fullData),
             });
             if (res.ok) {
-            set((state) => ({ travels: state.travels.map((t) => (t.id === id ? newTravel : t)) }));
-        }
+                set((state) => ({ travels: state.travels.map((t) => (t.id === id ? newTravel : t)) }));
+            }
         } catch (error) {
             console.error('[TravelStore] updateTravel failed:', error);
         }
@@ -215,9 +215,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
      */
     addItinerary: async (iti) => {
         const newIti = { ...iti, id: uuidv4() };
-        set((state) => ({ 
+        set((state) => ({
             itineraries: [...state.itineraries, newIti],
-            hasUnsavedChanges: true
+            hasUnsavedChanges: true,
         }));
     },
 
@@ -227,7 +227,7 @@ export const useTravelStore = create<TravelState>((set, get) => ({
     updateItinerary: async (id, updated) => {
         set((state) => ({
             itineraries: state.itineraries.map((i) => (i.id === id ? { ...i, ...updated } : i)),
-            hasUnsavedChanges: true
+            hasUnsavedChanges: true,
         }));
     },
 
@@ -237,7 +237,7 @@ export const useTravelStore = create<TravelState>((set, get) => ({
     deleteItinerary: async (id) => {
         set((state) => ({
             itineraries: state.itineraries.filter((i) => i.id !== id),
-            hasUnsavedChanges: true
+            hasUnsavedChanges: true,
         }));
     },
 
