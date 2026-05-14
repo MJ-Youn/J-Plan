@@ -227,7 +227,7 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
         return () => {
             isCancelled = true;
         };
-    }, [itineraries, geocodingLib, map, selectedDay]);
+    }, [itineraries, geocodingLib, map, selectedDay, accommodations, selectedItineraryId]);
 
     // 2. 선택된 일정(selectedItineraryId)이 변경될 때 지도를 해당 위치로 이동
     useEffect(() => {

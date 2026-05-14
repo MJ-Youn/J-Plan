@@ -5,7 +5,7 @@ import type { Itinerary } from '../../types/travel';
 import { getTypeEmoji, getTransportInfo } from '../../types/travel';
 /**
  * 시간대별 일정을 표시하는 타임테이블 컴포넌트입니다.
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
@@ -26,8 +26,6 @@ type ProcessedItinerary = Itinerary & {
     startMins: number;
     endMins: number;
 };
-
-
 
 const parseTime = (timeStr: string) => {
     const [h, m] = timeStr.split(':').map(Number);
@@ -182,7 +180,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         if (resizeInfo || (e.target as HTMLElement).closest('button')) {
             return;
         }
-        
+
         e.preventDefault();
         e.stopPropagation();
 
@@ -205,15 +203,15 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
         const target = effectiveItineraries.find((i) => i.id === targetId);
         if (source && target) {
             // 시간뿐만 아니라 일차(dayIndex)도 함께 스왑
-            updateItinerary(sourceId, { 
-                time: target.time, 
-                endTime: target.endTime, 
-                dayIndex: target.dayIndex 
+            updateItinerary(sourceId, {
+                time: target.time,
+                endTime: target.endTime,
+                dayIndex: target.dayIndex,
             });
-            updateItinerary(targetId, { 
-                time: source.time, 
-                endTime: source.endTime, 
-                dayIndex: source.dayIndex 
+            updateItinerary(targetId, {
+                time: source.time,
+                endTime: source.endTime,
+                dayIndex: source.dayIndex,
             });
         }
     };
@@ -237,24 +235,19 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             } else if (moveInfo) {
                 const deltaY = e.pageY - moveInfo.startY;
                 const deltaMins = Math.round(((deltaY / HOUR_HEIGHT) * 60) / 15) * 15;
-                
+
                 const duration = moveInfo.initialEndMins - moveInfo.initialStartMins;
                 let newStart = moveInfo.initialStartMins + deltaMins;
-                
+
                 // 범위 제한 (00:00 ~ 24:00)
                 newStart = Math.max(0, Math.min(newStart, 24 * 60 - duration));
                 const newEnd = newStart + duration;
 
                 // 충돌 검사: 이동할 자리에 다른 일정이 있는지 확인
-                const hasCollision = allProcessedEvents.some(other => 
-                    other.id !== moveInfo.id && 
-                    other.dayIndex === moveInfo.dayIndex && 
-                    newStart < other.endMins && 
-                    newEnd > other.startMins
-                );
+                const hasCollision = allProcessedEvents.some((other) => other.id !== moveInfo.id && other.dayIndex === moveInfo.dayIndex && newStart < other.endMins && newEnd > other.startMins);
 
                 if (!hasCollision) {
-                    setMoveInfo(prev => prev ? { ...prev, currentStartMins: newStart, currentEndMins: newEnd } : null);
+                    setMoveInfo((prev) => (prev ? { ...prev, currentStartMins: newStart, currentEndMins: newEnd } : null));
                 }
             } else if (dragCreateState) {
                 const deltaY = e.pageY - dragCreateState.startY;
@@ -267,21 +260,26 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
         const handleMouseUp = () => {
             if (resizeInfo) {
-                // 스토어에 즉시 반영 (hasUnsavedChanges 활성화됨)
-                updateItinerary(resizeInfo.id, {
-                    time: formatTime(resizeInfo.currentStartMins),
-                    endTime: formatTime(resizeInfo.currentEndMins),
-                });
+                if (resizeInfo.initialStartMins !== resizeInfo.currentStartMins || resizeInfo.initialEndMins !== resizeInfo.currentEndMins) {
+                    // 스토어에 즉시 반영 (hasUnsavedChanges 활성화됨)
+                    updateItinerary(resizeInfo.id, {
+                        time: formatTime(resizeInfo.currentStartMins),
+                        endTime: formatTime(resizeInfo.currentEndMins),
+                    });
+                }
                 setResizeInfo(null);
             }
             if (moveInfo) {
                 if (dragOverId) {
                     handleSwap(moveInfo.id, dragOverId);
-                } else {
+                } else if (moveInfo.initialStartMins !== moveInfo.currentStartMins || moveInfo.initialEndMins !== moveInfo.currentEndMins) {
                     updateItinerary(moveInfo.id, {
                         time: formatTime(moveInfo.currentStartMins),
                         endTime: formatTime(moveInfo.currentEndMins),
                     });
+                } else {
+                    // 위치 변경이 없다면 단순 클릭으로 간주하여 선택 처리
+                    onItineraryClick(moveInfo.id);
                 }
                 setMoveInfo(null);
                 setDragOverId(null);
@@ -342,7 +340,12 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             const isShortEvent = end - start <= 30;
 
             const formatDurationToKorean = (str: string) => {
-                return str.replace(/hours?/g, '시간').replace(/mins?/g, '분').replace(/days?/g, '일').replace(/\s+/g, ' ').trim();
+                return str
+                    .replace(/hours?/g, '시간')
+                    .replace(/mins?/g, '분')
+                    .replace(/days?/g, '일')
+                    .replace(/\s+/g, ' ')
+                    .trim();
             };
 
             const widthPct = 100 / (maxCol + 1);
@@ -389,18 +392,16 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                     key={p.event.id}
                     id={`itinerary-${p.event.id}`}
                     className={`itinerary-event absolute p-2 shadow-sm hover:shadow-md transition-all cursor-pointer group rounded-none border-t border-b border-r ${isShortEvent ? 'overflow-hidden' : 'overflow-y-auto scrollbar-thin'} ${
-                        isSelected
-                            ? 'border-amber-500 ring-2 ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30'
-                            : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
+                        isSelected ? 'border-amber-500 ring-2 ring-amber-500 z-20 bg-amber-50 dark:bg-amber-900/30' : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:z-10'
                     } ${resizeInfo?.id === p.event.id || moveInfo?.id === p.event.id ? 'z-30 opacity-90 shadow-xl border-amber-400' : ''} ${dragOverId === p.event.id ? 'ring-4 ring-blue-400 z-30' : ''}`}
-                    style={{ 
-                        top, 
-                        height: height + 1, 
-                        left: `${leftPct}%`, 
-                        width: `${widthPct}%`, 
-                        marginTop: '-1px', 
+                    style={{
+                        top,
+                        height: height + 1,
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`,
+                        marginTop: '-1px',
                         cursor: moveInfo?.id === p.event.id ? 'grabbing' : 'pointer',
-                        pointerEvents: moveInfo?.id === p.event.id ? 'none' : 'auto'
+                        pointerEvents: moveInfo?.id === p.event.id ? 'none' : 'auto',
                     }}
                     onMouseDown={(e) => handleMoveStart(e, p.event)}
                     onMouseEnter={() => {
@@ -417,7 +418,6 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         onItineraryClick(p.event.id);
                     }}
                 >
-
                     {/* Resize Handles - Desktop Only */}
                     {!isMobile && (
                         <>
@@ -513,7 +513,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                 </div>
             );
         });
-        
+
         // 드래그해서 생성 중인 임시 블록 표시
         if (dragCreateState && (colId === 'all' ? 1 : colId) === dragCreateState.dayIndex) {
             const start = dragCreateState.startMins;
@@ -521,7 +521,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             const top = ((start - startHour * 60) / 60) * HOUR_HEIGHT;
             let height = ((end - start) / 60) * HOUR_HEIGHT;
             height = Math.max(height, MIN_HEIGHT);
-            
+
             elements.push(
                 <div
                     key="drag-create-preview"
@@ -532,7 +532,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         {formatTime(start)} - {formatTime(end)}
                     </div>
                     <div className="text-xs text-blue-500">일정 추가 중...</div>
-                </div>
+                </div>,
             );
         }
 
@@ -612,7 +612,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                         if ((e.target as HTMLElement).closest('.cursor-ns-resize')) {
                                             return;
                                         }
-                                        
+
                                         const dayIndex = col.id === 'all' ? 1 : (col.id as number);
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const y = e.clientY - rect.top;
@@ -636,9 +636,10 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                 </div>
 
                 {/* ── 모바일 액션 바 (선택된 일정 제어) ── */}
-                {isMobile && selectedItineraryId && (
+                {isMobile &&
+                    selectedItineraryId &&
                     (() => {
-                        const selectedEvent = allProcessedEvents.find(e => e.id === selectedItineraryId);
+                        const selectedEvent = allProcessedEvents.find((e) => e.id === selectedItineraryId);
                         if (!selectedEvent) {
                             return null;
                         }
@@ -669,11 +670,14 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                             <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">{selectedEvent.dayIndex}일차 일정</div>
                                             <h3 className="text-sm font-bold truncate dark:text-white">{selectedEvent.content}</h3>
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => onItineraryClick('')}
                                             className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full"
                                         >
-                                            <X size={20} className="text-gray-400" />
+                                            <X
+                                                size={20}
+                                                className="text-gray-400"
+                                            />
                                         </button>
                                     </div>
 
@@ -684,18 +688,24 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                                 <Clock size={10} /> 시작 시간 ({formatTime(selectedEvent.startMins)})
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <button 
+                                                <button
                                                     onClick={() => handleAdjustTime('start', -15)}
                                                     className="flex-1 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg flex justify-center items-center hover:bg-gray-100 transition-colors"
                                                 >
-                                                    <ChevronUp size={16} className="text-gray-600 dark:text-gray-400" />
+                                                    <ChevronUp
+                                                        size={16}
+                                                        className="text-gray-600 dark:text-gray-400"
+                                                    />
                                                     <span className="text-xs font-bold ml-1">-15m</span>
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleAdjustTime('start', 15)}
                                                     className="flex-1 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg flex justify-center items-center hover:bg-gray-100 transition-colors"
                                                 >
-                                                    <ChevronDown size={16} className="text-gray-600 dark:text-gray-400" />
+                                                    <ChevronDown
+                                                        size={16}
+                                                        className="text-gray-600 dark:text-gray-400"
+                                                    />
                                                     <span className="text-xs font-bold ml-1">+15m</span>
                                                 </button>
                                             </div>
@@ -705,18 +715,24 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                                 <Clock size={10} /> 종료 시간 ({formatTime(selectedEvent.endMins)})
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <button 
+                                                <button
                                                     onClick={() => handleAdjustTime('end', -15)}
                                                     className="flex-1 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg flex justify-center items-center hover:bg-gray-100 transition-colors"
                                                 >
-                                                    <ChevronUp size={16} className="text-gray-600 dark:text-gray-400" />
+                                                    <ChevronUp
+                                                        size={16}
+                                                        className="text-gray-600 dark:text-gray-400"
+                                                    />
                                                     <span className="text-xs font-bold ml-1">-15m</span>
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleAdjustTime('end', 15)}
                                                     className="flex-1 py-2 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg flex justify-center items-center hover:bg-gray-100 transition-colors"
                                                 >
-                                                    <ChevronDown size={16} className="text-gray-600 dark:text-gray-400" />
+                                                    <ChevronDown
+                                                        size={16}
+                                                        className="text-gray-600 dark:text-gray-400"
+                                                    />
                                                     <span className="text-xs font-bold ml-1">+15m</span>
                                                 </button>
                                             </div>
@@ -725,13 +741,13 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
                                     {/* 기본 액션 버튼 */}
                                     <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
-                                        <button 
+                                        <button
                                             onClick={(e) => onEdit(e, selectedEvent)}
                                             className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
                                         >
                                             <Edit2 size={16} /> 수정하기
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={(e) => onDelete(e, selectedEvent.id)}
                                             className="w-14 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30"
                                         >
@@ -741,8 +757,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                 </div>
                             </div>
                         );
-                    })()
-                )}
+                    })()}
             </div>
         );
     };
@@ -754,9 +769,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             {/* ── 미저장 변경 사항 알림 배너 ── */}
             {hasUnsavedChanges && (
                 <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 shrink-0">
-                    <span className="text-[11px] sm:text-xs font-medium text-orange-700 dark:text-orange-300 truncate mr-2">
-                        {isMapExpanded ? '⚠️ 미저장 변경사항 있음' : '⚠️ 미저장 변경 사항이 있습니다. 확정하려면 저장 버튼을 눌러주세요.'}
-                    </span>
+                    <span className="text-[11px] sm:text-xs font-medium text-orange-700 dark:text-orange-300 truncate mr-2">{isMapExpanded ? '⚠️ 미저장 변경사항 있음' : '⚠️ 미저장 변경 사항이 있습니다. 확정하려면 저장 버튼을 눌러주세요.'}</span>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleDiscardAll}
