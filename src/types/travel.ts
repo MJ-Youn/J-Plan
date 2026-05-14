@@ -46,18 +46,9 @@ export interface TravelExportData {
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
-export type TransportMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
+export type TransportMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT' | 'TRAIN' | 'FLIGHT';
 
 export type ItineraryType = '이동' | '관광' | '식사' | '기타';
-
-export const getTypeEmoji = (type: ItineraryType): string => {
-  switch (type) {
-    case '이동': return '🚌';
-    case '관광': return '📸';
-    case '식사': return '🍽️';
-    default: return '📌';
-  }
-};
 
 export const getTransportInfo = (mode?: TransportMode): { label: string; emoji: string } => {
   switch (mode) {
@@ -65,7 +56,19 @@ export const getTransportInfo = (mode?: TransportMode): { label: string; emoji: 
     case 'WALKING': return { label: '도보', emoji: '🚶' };
     case 'BICYCLING': return { label: '자전거', emoji: '🚲' };
     case 'TRANSIT': return { label: '대중교통', emoji: '🚌' };
+    case 'TRAIN': return { label: '기차', emoji: '🚅' };
+    case 'FLIGHT': return { label: '비행기', emoji: '✈️' };
     default: return { label: '이동', emoji: '🏃' };
+  }
+};
+
+export const getTypeEmoji = (type: ItineraryType, mode?: TransportMode): string => {
+  switch (type) {
+    case '이동': 
+      return mode ? getTransportInfo(mode).emoji : '🏃';
+    case '관광': return '📸';
+    case '식사': return '🍽️';
+    default: return '📌';
   }
 };
 

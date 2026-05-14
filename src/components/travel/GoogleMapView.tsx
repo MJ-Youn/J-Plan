@@ -365,6 +365,7 @@ const GoogleMapView: React.FC<Props> = (props) => {
                 disableDefaultUI={true}
                 colorScheme={mapColorScheme}
                 gestureHandling="greedy"
+                renderingType="VECTOR"
                 style={{ width: '100%', height: '100%' }}
             >
                 <MapInner {...props} />

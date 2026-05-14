@@ -90,6 +90,9 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
     // 이동 소요 시간 자동 계산
     useEffect(() => {
         if (type === '이동' && address && arrivalAddress && transportMode && routesLib) {
+            if (transportMode === 'TRAIN' || transportMode === 'FLIGHT') {
+                return;
+            }
             const timer = setTimeout(() => {
                 calculateDuration();
             }, 800); // 디바운스 적용
@@ -428,23 +431,28 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                                         <option value="TRANSIT">🚌 대중교통</option>
                                         <option value="WALKING">🚶 도보</option>
                                         <option value="BICYCLING">🚲 자전거</option>
+                                        <option value="TRAIN">🚆 기차</option>
+                                        <option value="FLIGHT">✈️ 비행기</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[11px] mb-1 opacity-70">예상 소요 시간 / 거리</label>
+                                    <label className="block text-[11px] mb-1 opacity-70">
+                                        예상 소요 시간 / 거리
+                                        {(transportMode === 'TRAIN' || transportMode === 'FLIGHT') && <span className="text-amber-500 ml-1">(수기 입력)</span>}
+                                    </label>
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
                                             value={duration}
                                             onChange={(e) => setDuration(e.target.value)}
-                                            placeholder="시간"
+                                            placeholder="시간 (예: 2시간)"
                                             className="w-full p-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800 outline-none"
                                         />
                                         <input
                                             type="text"
                                             value={distance}
                                             onChange={(e) => setDistance(e.target.value)}
-                                            placeholder="거리"
+                                            placeholder="거리 (예: 300km)"
                                             className="w-24 p-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-800 outline-none"
                                         />
                                     </div>

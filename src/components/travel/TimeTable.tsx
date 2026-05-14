@@ -435,7 +435,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                     <div className="flex justify-between items-start mb-1 gap-2">
                         <div className="flex items-center space-x-1 flex-wrap">
                             <span className="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-amber-100 text-amber-700 dark:bg-zinc-700 dark:text-zinc-300 font-medium shrink-0">
-                                {getTypeEmoji(p.event.type)} {p.event.type}
+                                {getTypeEmoji(p.event.type, p.event.transportMode)} {p.event.type}
                             </span>
                             {colId === 'all' && maxCol > 0 && <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-zinc-700 px-1 rounded">{p.event.dayIndex}일차</span>}
                         </div>
