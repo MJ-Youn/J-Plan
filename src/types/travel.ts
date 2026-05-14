@@ -1,3 +1,9 @@
+/**
+ * 여행 기본 정보 인터페이스
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 export interface Travel {
   id: string;
   name: string;
@@ -5,6 +11,12 @@ export interface Travel {
   endDate: string;
 }
 
+/**
+ * 숙소 정보 인터페이스
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 export interface Accommodation {
   id: string;
   travelId: string;
@@ -15,6 +27,12 @@ export interface Accommodation {
   phone?: string;
 }
 
+/**
+ * 여행 데이터 내보내기용 구조체
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 export interface TravelExportData {
   version: string;
   travel: Travel;
@@ -22,6 +40,12 @@ export interface TravelExportData {
   accommodations: Accommodation[];
 }
 
+/**
+ * 이동 수단 타입
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 export type TransportMode = 'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT';
 
 export type ItineraryType = '이동' | '관광' | '식사' | '기타';
@@ -45,6 +69,12 @@ export const getTransportInfo = (mode?: TransportMode): { label: string; emoji: 
   }
 };
 
+/**
+ * 개별 일정 상세 정보 인터페이스
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 export interface Itinerary {
   id: string;
   travelId: string;

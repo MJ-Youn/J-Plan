@@ -2,7 +2,7 @@
  * Kakao Mobility Directions API 프록시 핸들러입니다.
  * 클라이언트의 CORS 문제를 해결하고 API 키를 보호합니다.
  * 
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 export async function onRequestGet(context: any) {

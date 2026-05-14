@@ -5,6 +5,12 @@ import { useTravelStore } from '../store/travelStore';
 import type { Travel, TravelExportData } from '../types/travel';
 import TravelModal from '../components/travel/TravelModal';
 
+/**
+ * 메인 여행 목록 페이지입니다.
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 const TravelList: React.FC = () => {
     const { travels, isLoading, fetchTravels, deleteTravel, importTravel } = useTravelStore();
     const navigate = useNavigate();
@@ -47,7 +53,9 @@ const TravelList: React.FC = () => {
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (!file) {
+            return;
+        }
 
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -66,7 +74,9 @@ const TravelList: React.FC = () => {
                 console.error(error);
             }
             // 입력 초기화
-            if (fileInputRef.current) fileInputRef.current.value = '';
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
         };
         reader.readAsText(file);
     };

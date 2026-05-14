@@ -36,7 +36,7 @@ const getLocalDetailKey = (id: string) => `jplan_detail_${id}`;
  * 로컬 개발 환경(`DEV`)에서는 localStorage를 사용하고,
  * 운영 환경에서는 Cloudflare API와 동기화됩니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 export const useTravelStore = create<TravelState>((set, get) => ({
@@ -121,7 +121,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newTravel),
             });
-            if (res.ok) set((state) => ({ travels: [...state.travels, newTravel] }));
+            if (res.ok) {
+            set((state) => ({ travels: [...state.travels, newTravel] }));
+        }
         } catch (error) {
             console.error('[TravelStore] addTravel failed:', error);
         }
@@ -132,7 +134,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
      */
     updateTravel: async (id, updated) => {
         const travel = get().travels.find((t) => t.id === id);
-        if (!travel) return;
+        if (!travel) {
+            return;
+        }
         const newTravel = { ...travel, ...updated };
 
         if (import.meta.env.DEV) {
@@ -150,7 +154,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
 
         try {
             const detailRes = await fetch(`/api/data/travels/${id}`);
-            if (!detailRes.ok) return;
+            if (!detailRes.ok) {
+            return;
+        }
             const fullData: TravelExportData = await detailRes.json();
             fullData.travel = newTravel;
 
@@ -159,7 +165,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(fullData),
             });
-            if (res.ok) set((state) => ({ travels: state.travels.map((t) => (t.id === id ? newTravel : t)) }));
+            if (res.ok) {
+            set((state) => ({ travels: state.travels.map((t) => (t.id === id ? newTravel : t)) }));
+        }
         } catch (error) {
             console.error('[TravelStore] updateTravel failed:', error);
         }
@@ -239,7 +247,9 @@ export const useTravelStore = create<TravelState>((set, get) => ({
     saveTravelDetail: async (travelId) => {
         const state = get();
         const travel = state.travels.find((t) => t.id === travelId);
-        if (!travel) return;
+        if (!travel) {
+            return;
+        }
 
         const fullData: TravelExportData = {
             version: '1.0',

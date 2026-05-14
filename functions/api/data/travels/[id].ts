@@ -1,7 +1,7 @@
 /**
  * 개별 여행의 상세 데이터를 조회, 수정, 삭제하는 핸들러입니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026-05-06
  */
 export async function onRequestGet(context: any) {

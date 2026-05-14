@@ -11,7 +11,7 @@ interface AccommodationSectionProps {
  * 여행 상세 페이지에서 숙소 정보를 표시하는 섹션입니다.
  * 모바일 최적화를 위해 기본적으로 접혀 있으며, 선택 시 펼칠 수 있습니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const AccommodationSection: React.FC<AccommodationSectionProps> = ({ accommodations, selectedDay }) => {
@@ -20,7 +20,9 @@ const AccommodationSection: React.FC<AccommodationSectionProps> = ({ accommodati
     // 선택된 일차에 해당하는 숙소 필터링 (전체 일정이면 전체 표시)
     const filteredAccs = selectedDay === 'all' ? accommodations : accommodations.filter((a) => a.dayIndex === selectedDay);
 
-    if (filteredAccs.length === 0) return null;
+    if (filteredAccs.length === 0) {
+        return null;
+    }
 
     return (
         <div className="mb-4 sm:mb-6 print:mb-4">

@@ -9,7 +9,7 @@ import { MOCK_USER, useAuthStore } from '../store/authStore';
  * Turnstile 인증 및 Google OAuth 로그인을 처리합니다.
  * 로컬 개발 환경에서는 Mock 로그인을 통해 즉시 진입이 가능합니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const Login: React.FC = () => {

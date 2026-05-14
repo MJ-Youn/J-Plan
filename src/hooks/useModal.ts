@@ -13,14 +13,20 @@ export const useModal = (isOpen: boolean, onClose: () => void) => {
 
     // 모달이 열릴 때마다 위치 초기화
     useEffect(() => {
-        if (isOpen) setPosition(null);
+        if (isOpen) {
+            setPosition(null);
+        }
     }, [isOpen]);
 
     // ESC 키로 모달 닫기
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen) {
+            return;
+        }
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') {
+            onClose();
+        }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
@@ -30,7 +36,9 @@ export const useModal = (isOpen: boolean, onClose: () => void) => {
     const handleDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         e.preventDefault();
         const el = e.currentTarget.closest('[data-modal-container]') as HTMLElement;
-        if (!el) return;
+        if (!el) {
+            return;
+        }
         const rect = el.getBoundingClientRect();
         dragging.current = true;
         startOffset.current = {
@@ -39,7 +47,9 @@ export const useModal = (isOpen: boolean, onClose: () => void) => {
         };
 
         const handleMouseMove = (ev: MouseEvent) => {
-            if (!dragging.current) return;
+            if (!dragging.current) {
+            return;
+        }
             setPosition({
                 x: ev.clientX - startOffset.current.x,
                 y: ev.clientY - startOffset.current.y,

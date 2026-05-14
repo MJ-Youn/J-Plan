@@ -4,6 +4,12 @@ import type { Travel } from '../../types/travel';
 import { useTravelStore } from '../../store/travelStore';
 import { useModal } from '../../hooks/useModal';
 
+/**
+ * 새 여행 생성 및 기존 여행 수정을 위한 모달 컴포넌트입니다.
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 interface TravelModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -29,12 +35,18 @@ const TravelModal: React.FC<TravelModalProps> = ({ isOpen, onClose, editTarget }
         }
     }, [editTarget, isOpen]);
 
-    if (!isOpen) return null;
+    if (!isOpen) {
+        return null;
+    }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name || !startDate || !endDate) return alert('모든 필드를 입력해주세요.');
-        if (startDate > endDate) return alert('종료일은 시작일 이후여야 합니다.');
+        if (!name || !startDate || !endDate) {
+            return alert('모든 필드를 입력해주세요.');
+        }
+        if (startDate > endDate) {
+            return alert('종료일은 시작일 이후여야 합니다.');
+        }
 
         if (editTarget) {
             updateTravel(editTarget.id, { name, startDate, endDate });

@@ -4,7 +4,7 @@ import { jwtVerify } from 'jose';
  * API 요청에 대한 인증을 처리하는 미들웨어입니다.
  * /api/data/* 경로에 대해 JWT 토큰을 검증합니다.
  * 
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026-05-06
  */
 export const onRequest = async (context: any) => {

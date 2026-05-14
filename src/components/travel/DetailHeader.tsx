@@ -15,7 +15,7 @@ interface DetailHeaderProps {
  * 여행 상세 페이지의 헤더 영역 컴포넌트입니다.
  * 여행 이름, 기간 표시 및 주요 액션 버튼을 포함합니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const DetailHeader: React.FC<DetailHeaderProps> = ({ travel, onPrint, onExportJSON, onOpenAccModal, onOpenNewItinerary }) => {

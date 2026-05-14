@@ -12,7 +12,7 @@ import TravelList from './pages/TravelList';
 /**
  * 앱 루트 컴포넌트입니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 function App() {
@@ -43,7 +43,9 @@ function App() {
         </BrowserRouter>
     );
 
-    if (!API_KEY) return content;
+    if (!API_KEY) {
+        return content;
+    }
 
     return <APIProvider apiKey={API_KEY}>{content}</APIProvider>;
 }

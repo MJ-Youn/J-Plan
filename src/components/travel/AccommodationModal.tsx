@@ -5,7 +5,12 @@ import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { Accommodation } from '../../types/travel';
 import { useModal } from '../../hooks/useModal';
-
+/**
+ * 숙소 정보 추가/수정 모달 컴포넌트입니다.
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -34,7 +39,9 @@ const AccommodationModal: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
         }
     }, [isOpen, travelId, accommodations, totalDays]);
 
-    if (!isOpen) return null;
+    if (!isOpen) {
+        return null;
+    }
 
     const handleChange = (index: number, field: keyof Accommodation, value: string) => {
         const newList = [...accList];

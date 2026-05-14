@@ -6,6 +6,12 @@ import { useModal } from '../../hooks/useModal';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { TransportMode, Itinerary, ItineraryType } from '../../types/travel';
 
+/**
+ * 일정 추가 및 수정을 위한 모달 컴포넌트입니다.
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
+ */
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -92,7 +98,9 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
     }, [address, arrivalAddress, transportMode, type, routesLib]);
 
     const calculateDuration = async () => {
-        if (!routesLib || !geocodingLib || !address || !arrivalAddress || !transportMode) return;
+        if (!routesLib || !geocodingLib || !address || !arrivalAddress || !transportMode) {
+            return;
+        }
         setIsCalculating(true);
 
         try {
@@ -124,12 +132,16 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                     const res = await fetch(`https://apis-navi.kakaomobility.com/v1/directions?origin=${originStr}&destination=${destStr}`, {
                         headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
                     });
-                    if (!res.ok) throw new Error('Kakao Direct API Error');
+                    if (!res.ok) {
+                        throw new Error('Kakao Direct API Error');
+                    }
                     data = await res.json();
                 } else {
                     // 운영 환경: Cloudflare Worker 프록시 경유
                     const res = await fetch(`/api/geo/kakao-directions?origin=${originStr}&destination=${destStr}`);
-                    if (!res.ok) throw new Error('Kakao Proxy Error');
+                    if (!res.ok) {
+                        throw new Error('Kakao Proxy Error');
+                    }
                     data = await res.json();
                 }
 
@@ -189,12 +201,18 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
         }
     };
 
-    if (!isOpen) return null;
+    if (!isOpen) {
+        return null;
+    }
 
     const handleSubmit = (e: React.FormEvent, keepOpen: boolean) => {
         e.preventDefault();
-        if (!type || !dayIndex || !time || !content) return alert('필수 항목을 모두 입력해주세요.');
-        if (type === '이동' && (!address || !arrivalAddress)) return alert('이동일 경우 출발 위치와 도착 위치를 모두 입력해야 합니다.');
+        if (!type || !dayIndex || !time || !content) {
+            return alert('필수 항목을 모두 입력해주세요.');
+        }
+        if (type === '이동' && (!address || !arrivalAddress)) {
+            return alert('이동일 경우 출발 위치와 도착 위치를 모두 입력해야 합니다.');
+        }
 
         if (editTarget) {
             updateItinerary(editTarget.id, {
@@ -232,7 +250,9 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
             setArrivalAddress('');
             setDescription('');
             setType('');
-            if (!keepOpen) onClose();
+            if (!keepOpen) {
+                onClose();
+            }
         }
     };
 

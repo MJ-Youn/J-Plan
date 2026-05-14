@@ -9,7 +9,7 @@ interface DayFilterProps {
 /**
  * 여행 일차를 선택하여 필터링하는 컴포넌트입니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const DayFilter: React.FC<DayFilterProps> = ({ days, selectedDay, setSelectedDay }) => {

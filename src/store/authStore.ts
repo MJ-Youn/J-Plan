@@ -35,7 +35,7 @@ export const MOCK_USER: User = {
  * 사용자 인증 상태를 관리하는 Store입니다.
  * 로컬 개발 모드에서는 Mock 데이터를 사용합니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 export const useAuthStore = create<AuthState>((set) => ({

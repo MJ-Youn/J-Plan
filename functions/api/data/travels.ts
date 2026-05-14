@@ -2,7 +2,7 @@
  * 여행 목록을 조회하거나 새로운 여행을 생성하는 핸들러입니다.
  * Cloudflare R2를 저장소로 사용합니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026-05-06
  */
 export async function onRequestGet(context: any) {

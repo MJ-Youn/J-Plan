@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
  * 어플리케이션의 메인 레이아웃 컴포넌트입니다.
  * 상단 GNB, 메인 콘텐츠 영역, 하단 푸터를 포함합니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const MainLayout: React.FC = () => {

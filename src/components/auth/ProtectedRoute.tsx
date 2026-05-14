@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 /**
  * 인증된 사용자만 접근할 수 있도록 보호하는 래퍼 컴포넌트입니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026-05-06
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {

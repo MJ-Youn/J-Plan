@@ -15,7 +15,7 @@ import type { Itinerary, TravelExportData } from '../types/travel';
  * 여행 상세 페이지 컴포넌트입니다.
  * 타임라인 뷰와 지도 뷰를 통해 일정을 관리할 수 있습니다.
  *
- * @author 윤명준 (MJ Yune)
+ * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
 const TravelDetail: React.FC = () => {
@@ -36,15 +36,21 @@ const TravelDetail: React.FC = () => {
     const travel = travels.find((t) => t.id === id);
 
     useEffect(() => {
-        if (travels.length === 0) fetchTravels();
-        if (id) fetchTravelDetail(id);
+        if (travels.length === 0) {
+            fetchTravels();
+        }
+        if (id) {
+            fetchTravelDetail(id);
+        }
     }, [id, fetchTravels, fetchTravelDetail, travels.length]);
 
     // 선택된 일정으로 자동 스크롤
     useEffect(() => {
         if (selectedItineraryId) {
             const el = document.getElementById(`itinerary-${selectedItineraryId}`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
     }, [selectedItineraryId]);
 
@@ -56,7 +62,9 @@ const TravelDetail: React.FC = () => {
         );
     }
 
-    if (isLoading) return null;
+    if (isLoading) {
+        return null;
+    }
 
     if (!travel) {
         return (
@@ -78,16 +86,22 @@ const TravelDetail: React.FC = () => {
     const filteredItineraries = itineraries
         .filter((i) => i.travelId === id && (selectedDay === 'all' || i.dayIndex === selectedDay))
         .sort((a, b) => {
-            if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
+            if (a.dayIndex !== b.dayIndex) {
+            return a.dayIndex - b.dayIndex;
+        }
             return a.time.localeCompare(b.time);
         });
 
     const handlePrint = () => {
         const isDark = document.documentElement.classList.contains('dark');
-        if (isDark) document.documentElement.classList.remove('dark');
+        if (isDark) {
+            document.documentElement.classList.remove('dark');
+        }
         setTimeout(() => {
             window.print();
-            if (isDark) document.documentElement.classList.add('dark');
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            }
         }, 100);
     };
 
@@ -193,7 +207,9 @@ const TravelDetail: React.FC = () => {
                                 }}
                                 onDelete={(e, itiId) => {
                                     e.stopPropagation();
-                                    if (window.confirm('일정을 삭제하시겠습니까?')) deleteItinerary(itiId);
+                                    if (window.confirm('일정을 삭제하시겠습니까?')) {
+            deleteItinerary(itiId);
+        }
                                 }}
                             />
                         </div>

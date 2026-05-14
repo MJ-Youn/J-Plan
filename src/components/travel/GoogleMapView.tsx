@@ -2,11 +2,14 @@ import { Map as GoogleMap, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import React, { useEffect, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
-import type { Accommodation, Itinerary, ItineraryType } from '../../types/travel';
-import { getTypeEmoji } from '../../types/travel';
+import type { Accommodation, Itinerary, ItineraryType, TransportMode } from '../../types/travel';
+import { getTypeEmoji, getTransportInfo } from '../../types/travel';
 
 /**
  * 지도 컴포넌트의 Props 인터페이스
+ * 
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 05. 14.
  */
 interface Props {
     itineraries: Itinerary[];
@@ -27,6 +30,10 @@ interface GeocodedMarker {
     type: ItineraryType | '숙소';
     address: string;
     description?: string;
+    rotation?: number;
+    transportMode?: TransportMode;
+    duration?: string;
+    distance?: string;
 }
 
 // 주소-좌표 변환 성능을 위한 캐시 객체
@@ -38,7 +45,9 @@ const geocodeCache = new Map<string, { lat: number; lng: number }>();
 const PolylineComponent = ({ positions, theme }: { positions: { lat: number; lng: number }[]; theme: string }) => {
     const map = useMap();
     useEffect(() => {
-        if (!map || positions.length < 2) return;
+        if (!map || positions.length < 2) {
+            return;
+        }
         const path = new google.maps.Polyline({
             path: positions,
             geodesic: true,
@@ -67,7 +76,9 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
 
     // 1. 일정 및 숙소 데이터를 좌표로 변환(Geocoding)하는 로직
     useEffect(() => {
-        if (!geocodingLib) return;
+        if (!geocodingLib) {
+            return;
+        }
 
         const geocoder = new geocodingLib.Geocoder();
         let isCancelled = false;
@@ -78,7 +89,9 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
             const newPositions: { lat: number; lng: number }[] = [];
 
             const geocode = async (address: string): Promise<{ lat: number; lng: number } | null> => {
-                if (geocodeCache.has(address)) return geocodeCache.get(address)!;
+                if (geocodeCache.has(address)) {
+                    return geocodeCache.get(address)!;
+                }
                 try {
                     const res = await geocoder.geocode({ address, language: 'ko' });
                     if (res.results && res.results.length > 0) {
@@ -95,10 +108,51 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
 
             // 일정 데이터 처리
             for (const iti of itineraries) {
-                if (isCancelled) break;
-                if (iti.address) {
+                if (isCancelled) {
+                    break;
+                }
+                if (iti.type === '이동' && iti.address && iti.arrivalAddress) {
+                    const startCoords = await geocode(iti.address);
+                    const endCoords = await geocode(iti.arrivalAddress);
+                    if (isCancelled) {
+                        break;
+                    }
+                    if (startCoords && endCoords) {
+                        newPositions.push(startCoords);
+                        newPositions.push(endCoords);
+
+                        const midLat = (startCoords.lat + endCoords.lat) / 2;
+                        const midLng = (startCoords.lng + endCoords.lng) / 2;
+
+                        const avgLat = midLat;
+                        const latRad = (avgLat * Math.PI) / 180;
+                        const dy = -(endCoords.lat - startCoords.lat) / Math.cos(latRad);
+                        const dx = endCoords.lng - startCoords.lng;
+                        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+                        if (angle > 90 || angle < -90) {
+                            angle += 180;
+                        }
+
+                        newMarkers.push({
+                            id: iti.id,
+                            lat: midLat,
+                            lng: midLng,
+                            content: iti.content,
+                            type: iti.type,
+                            address: iti.address,
+                            description: iti.description,
+                            rotation: angle,
+                            transportMode: iti.transportMode,
+                            duration: iti.duration,
+                            distance: iti.distance,
+                        });
+                    }
+                } else if (iti.address) {
                     const coords = await geocode(iti.address);
-                    if (isCancelled) break;
+                    if (isCancelled) {
+                        break;
+                    }
                     if (coords) {
                         newPositions.push(coords);
                         newMarkers.push({
@@ -125,10 +179,14 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
             }
 
             for (const acc of filteredAccommodations) {
-                if (isCancelled) break;
+                if (isCancelled) {
+                    break;
+                }
                 if (acc.address) {
                     const coords = await geocode(acc.address);
-                    if (isCancelled) break;
+                    if (isCancelled) {
+                        break;
+                    }
                     if (coords) {
                         newMarkers.push({
                             id: acc.id,
@@ -166,12 +224,16 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
         };
 
         fetchCoordinates();
-        return () => { isCancelled = true; };
+        return () => {
+            isCancelled = true;
+        };
     }, [itineraries, geocodingLib, map, selectedDay]);
 
     // 2. 선택된 일정(selectedItineraryId)이 변경될 때 지도를 해당 위치로 이동
     useEffect(() => {
-        if (!map || !selectedItineraryId || markers.length === 0) return;
+        if (!map || !selectedItineraryId || markers.length === 0) {
+            return;
+        }
 
         const target = markers.find((m) => m.id === selectedItineraryId);
         if (target) {
@@ -198,12 +260,18 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
                 >
                     {isExpanded ? (
                         <>
-                            <Minimize2 size={16} className="text-amber-600 dark:text-amber-400" />
+                            <Minimize2
+                                size={16}
+                                className="text-amber-600 dark:text-amber-400"
+                            />
                             <span>마커 축소</span>
                         </>
                     ) : (
                         <>
-                            <Maximize2 size={16} className="text-amber-600 dark:text-amber-400" />
+                            <Maximize2
+                                size={16}
+                                className="text-amber-600 dark:text-amber-400"
+                            />
                             <span>마커 확장</span>
                         </>
                     )}
@@ -214,41 +282,69 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
             {markers.map((marker) => {
                 const isSelected = marker.id === selectedItineraryId;
                 const isAccommodation = marker.type === '숙소';
+                const isTravel = marker.type === '이동';
 
                 return (
                     <AdvancedMarker
                         key={marker.id}
                         position={{ lat: marker.lat, lng: marker.lng }}
-                        zIndex={isSelected ? 1000 : isAccommodation ? 500 : 1}
+                        zIndex={isSelected ? 1000 : isTravel ? 400 : isAccommodation ? 500 : 1}
                         onClick={() => onMarkerClick && onMarkerClick(marker.id)}
                     >
-                        <div
-                            style={{ width: isExpanded ? 'max-content' : '40px' }}
-                            className={`rounded-xl shadow-lg text-sm font-bold border-2 transition-all flex items-center justify-center ${isExpanded ? 'px-3 py-1.5' : 'w-10 h-10 !rounded-full'} ${
-                                isSelected
-                                    ? isAccommodation
-                                        ? 'bg-amber-600 text-white border-amber-800 scale-110 z-50'
+                        {isTravel ? (
+                            <div
+                                style={{
+                                    transform: marker.rotation !== undefined ? `rotate(${marker.rotation}deg)` : 'none',
+                                    whiteSpace: 'nowrap',
+                                    transformOrigin: 'center center',
+                                    // Move marker up slightly so it floats perfectly above the line
+                                    marginTop: '-12px',
+                                }}
+                                className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition-all flex items-center justify-center gap-1 shadow-sm ${
+                                    isSelected
+                                        ? 'bg-amber-600 text-white scale-110 z-50'
                                         : theme === 'dark'
-                                          ? 'bg-amber-500 text-zinc-900 border-amber-700 scale-110 z-50'
-                                          : 'bg-amber-600 text-white border-amber-800 scale-110 z-50'
-                                    : isAccommodation
-                                      ? theme === 'dark'
-                                          ? 'bg-amber-900/60 text-amber-100 border-amber-700 hover:border-amber-400 z-20'
-                                          : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-500 z-20'
-                                      : theme === 'dark'
-                                        ? 'bg-zinc-800 text-zinc-100 border-zinc-600 hover:border-amber-400 z-10'
-                                        : 'bg-white text-gray-800 border-gray-200 hover:border-amber-500 z-10'
-                            }`}
-                        >
-                            <span className={isExpanded ? 'mr-1' : 'text-lg'}>{isAccommodation ? '🏠' : getTypeEmoji(marker.type as ItineraryType)}</span>
-                            {isExpanded && <span>{marker.content}</span>}
-                        </div>
+                                          ? 'bg-zinc-800/90 text-amber-400 border border-zinc-600 backdrop-blur-sm'
+                                          : 'bg-white/90 text-amber-700 border border-amber-200 backdrop-blur-sm'
+                                }`}
+                            >
+                                {marker.transportMode && <span>{getTransportInfo(marker.transportMode).emoji}</span>}
+                                {marker.distance && <span>{marker.distance}</span>}
+                                {marker.distance && marker.duration && <span>·</span>}
+                                <span>{marker.duration || marker.content}</span>
+                            </div>
+                        ) : (
+                            <div
+                                style={{ width: isExpanded ? 'max-content' : '40px' }}
+                                className={`rounded-xl shadow-lg text-sm font-bold border-2 transition-all flex items-center justify-center ${isExpanded ? 'px-3 py-1.5' : 'w-10 h-10 !rounded-full'} ${
+                                    isSelected
+                                        ? isAccommodation
+                                            ? 'bg-amber-600 text-white border-amber-800 scale-110 z-50'
+                                            : theme === 'dark'
+                                              ? 'bg-amber-500 text-zinc-900 border-amber-700 scale-110 z-50'
+                                              : 'bg-amber-600 text-white border-amber-800 scale-110 z-50'
+                                        : isAccommodation
+                                          ? theme === 'dark'
+                                              ? 'bg-amber-900/60 text-amber-100 border-amber-700 hover:border-amber-400 z-20'
+                                              : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-500 z-20'
+                                          : theme === 'dark'
+                                            ? 'bg-zinc-800 text-zinc-100 border-zinc-600 hover:border-amber-400 z-10'
+                                            : 'bg-white text-gray-800 border-gray-200 hover:border-amber-500 z-10'
+                                }`}
+                            >
+                                <span className={isExpanded ? 'mr-1' : 'text-lg'}>{isAccommodation ? '🏠' : getTypeEmoji(marker.type as ItineraryType)}</span>
+                                {isExpanded && <span>{marker.content}</span>}
+                            </div>
+                        )}
                     </AdvancedMarker>
                 );
             })}
 
             {/* 경로 폴리라인 */}
-            <PolylineComponent positions={positions} theme={theme} />
+            <PolylineComponent
+                positions={positions}
+                theme={theme}
+            />
         </>
     );
 };
