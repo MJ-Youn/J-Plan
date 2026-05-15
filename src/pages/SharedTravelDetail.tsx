@@ -96,8 +96,8 @@ const SharedTravelDetail: React.FC = () => {
                         setAccommodations(data.accommodations);
                     }
                 }
-            } catch (err) {
-                setError(err.message);
+            } catch (err: unknown) {
+                setError((err as Error).message);
             } finally {
                 setIsLoading(false);
             }
