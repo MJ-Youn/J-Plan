@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { differenceInDays, parseISO } from 'date-fns';
 import { Turnstile } from '@marsidev/react-turnstile';
-import TimeTable from '../components/travel/TimeTable';
-import GoogleMapView from '../components/travel/GoogleMapView';
-import DayFilter from '../components/travel/DayFilter';
+import { differenceInDays, parseISO } from 'date-fns';
+import { Map as MapIcon, ShieldCheck, Sparkles, X } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import AccommodationSection from '../components/travel/AccommodationSection';
+import DayFilter from '../components/travel/DayFilter';
 import SharedItineraryDialog from '../components/travel/dialog/SharedItineraryDialog';
-import type { Travel, Itinerary, Accommodation } from '../types/travel';
-import { ShieldCheck, Map as MapIcon, Sparkles, X } from 'lucide-react';
+import GoogleMapView from '../components/travel/GoogleMapView';
+import TimeTable from '../components/travel/TimeTable';
+import type { Accommodation, Itinerary, Travel } from '../types/travel';
 
 /**
  * 공유된 여행 상세 페이지 컴포넌트입니다.
@@ -35,6 +35,76 @@ const SharedTravelDetail: React.FC = () => {
     const [selectedItineraryId, setSelectedItineraryId] = useState<string | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+    const fetchSharedData = useCallback(
+        async (cfToken: string) => {
+            setIsLoading(true);
+            try {
+                if (import.meta.env.DEV) {
+                    let decodedStr = '';
+                    try {
+                        decodedStr = atob(shareId!);
+                    } catch (e) {
+                        throw new Error('Invalid Share ID format', { cause: e });
+                    }
+                    const [, travelId] = decodedStr.split(':');
+                    if (!travelId) {
+                        throw new Error('Invalid Share ID');
+                    }
+
+                    const saved = localStorage.getItem(`jplan_detail_${travelId}`);
+                    if (!saved) {
+                        throw new Error('Travel not found or sharing disabled');
+                    }
+
+                    const data = JSON.parse(saved);
+                    if (data.travel) {
+                        setTravel(data.travel);
+                    }
+                    if (data.itineraries) {
+                        setItineraries(data.itineraries);
+                    }
+                    if (data.accommodations) {
+                        setAccommodations(data.accommodations);
+                    }
+                } else {
+                    const res = await fetch(`/api/share/${shareId}?cf_token=${cfToken}`);
+                    if (!res.ok) {
+                        // JSON 파싱 에러 방지 (HTML 응답 등)
+                        const contentType = res.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            const data = await res.json();
+                            throw new Error(data.error || '데이터를 불러올 수 없습니다.');
+                        } else {
+                            throw new Error('API 서버에 접근할 수 없습니다. (상태 코드: ' + res.status + ')');
+                        }
+                    }
+
+                    // 성공 응답이라도 JSON이 아닌 HTML(SPA Fallback)이 반환되었는지 체크
+                    const contentType = res.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw new Error('서버에서 올바른 데이터(JSON)를 반환하지 않았습니다. 백엔드(API) 서버가 정상적으로 실행 중인지 확인해주세요.');
+                    }
+
+                    const data = await res.json();
+                    if (data.travel) {
+                        setTravel(data.travel);
+                    }
+                    if (data.itineraries) {
+                        setItineraries(data.itineraries);
+                    }
+                    if (data.accommodations) {
+                        setAccommodations(data.accommodations);
+                    }
+                }
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setIsLoading(false);
+            }
+        },
+        [shareId],
+    );
+
     useEffect(() => {
         if (!shareId) {
             setError('잘못된 공유 링크입니다.');
@@ -47,58 +117,7 @@ const SharedTravelDetail: React.FC = () => {
         } else if (token) {
             fetchSharedData(token);
         }
-    }, [shareId, token]);
-
-    const fetchSharedData = async (cfToken: string) => {
-        setIsLoading(true);
-        try {
-            if (import.meta.env.DEV) {
-                let decodedStr = '';
-                try {
-                    decodedStr = atob(shareId!);
-                } catch (e) {
-                    throw new Error('Invalid Share ID format');
-                }
-                const [, travelId] = decodedStr.split(':');
-                if (!travelId) throw new Error('Invalid Share ID');
-
-                const saved = localStorage.getItem(`jplan_detail_${travelId}`);
-                if (!saved) throw new Error('Travel not found or sharing disabled');
-
-                const data = JSON.parse(saved);
-                if (data.travel) setTravel(data.travel);
-                if (data.itineraries) setItineraries(data.itineraries);
-                if (data.accommodations) setAccommodations(data.accommodations);
-            } else {
-                const res = await fetch(`/api/share/${shareId}?cf_token=${cfToken}`);
-                if (!res.ok) {
-                    // JSON 파싱 에러 방지 (HTML 응답 등)
-                    const contentType = res.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        const data = await res.json();
-                        throw new Error(data.error || '데이터를 불러올 수 없습니다.');
-                    } else {
-                        throw new Error('API 서버에 접근할 수 없습니다. (상태 코드: ' + res.status + ')');
-                    }
-                }
-                
-                // 성공 응답이라도 JSON이 아닌 HTML(SPA Fallback)이 반환되었는지 체크
-                const contentType = res.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    throw new Error('서버에서 올바른 데이터(JSON)를 반환하지 않았습니다. 백엔드(API) 서버가 정상적으로 실행 중인지 확인해주세요.');
-                }
-                
-                const data = await res.json();
-                if (data.travel) setTravel(data.travel);
-                if (data.itineraries) setItineraries(data.itineraries);
-                if (data.accommodations) setAccommodations(data.accommodations);
-            }
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    }, [shareId, token, fetchSharedData]);
 
     if (error) {
         return (

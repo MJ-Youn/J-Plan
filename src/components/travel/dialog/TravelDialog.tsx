@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { Travel } from '../../../types/travel';
 import { useTravelStore } from '../../../store/travelStore';
-import { useModal } from '../../../hooks/useModal';
+import { useDialog } from '../../../hooks/useDialog';
 
 /**
  * 새 여행 생성 및 기존 여행 수정을 위한 모달 컴포넌트입니다.
@@ -21,7 +21,7 @@ const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget
     const [name, setName] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const { handleDragStart, modalStyle } = useModal(isOpen, onClose);
+    const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
 
     useEffect(() => {
         if (editTarget) {

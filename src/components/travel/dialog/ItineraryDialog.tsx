@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
-import { useModal } from '../../../hooks/useModal';
+import { useDialog } from '../../../hooks/useDialog';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { TransportMode, Itinerary, ItineraryType } from '../../../types/travel';
 
@@ -23,7 +23,7 @@ interface Props {
 const ItineraryDialog: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget, defaultData }) => {
     const { travels, addItinerary, updateItinerary } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
-    const { handleDragStart, modalStyle } = useModal(isOpen, onClose);
+    const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
 
     const totalDays = travel ? differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1 : 1;
 

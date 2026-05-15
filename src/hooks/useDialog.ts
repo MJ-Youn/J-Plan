@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * @param isOpen - 모달 열림 여부
  * @param onClose - 모달 닫기 콜백
  */
-export const useModal = (isOpen: boolean, onClose: () => void) => {
+export const useDialog = (isOpen: boolean, onClose: () => void) => {
     // 모달 위치 상태 (초기값: 화면 중앙)
     const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
     const dragging = useRef(false);

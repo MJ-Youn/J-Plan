@@ -4,7 +4,7 @@ import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { Accommodation } from '../../../types/travel';
-import { useModal } from '../../../hooks/useModal';
+import { useDialog } from '../../../hooks/useDialog';
 /**
  * 숙소 정보 추가/수정 모달 컴포넌트입니다.
  * 
@@ -23,7 +23,7 @@ const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => 
     const totalDays = travel ? differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1 : 1;
 
     const [accList, setAccList] = useState<Partial<Accommodation>[]>([]);
-    const { handleDragStart, modalStyle } = useModal(isOpen, onClose);
+    const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
 
     useEffect(() => {
         if (isOpen) {
