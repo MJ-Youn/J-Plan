@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useTravelStore } from '../store/travelStore';
+import { useAuthStore } from '../store/authStore';
 import TimeTable from '../components/travel/TimeTable';
-import ItineraryModal from '../components/travel/ItineraryModal';
-import AccommodationModal from '../components/travel/AccommodationModal';
+import ItineraryDialog from '../components/travel/dialog/ItineraryDialog';
+import AccommodationDialog from '../components/travel/dialog/AccommodationDialog';
 import GoogleMapView from '../components/travel/GoogleMapView';
 import DetailHeader from '../components/travel/DetailHeader';
 import DayFilter from '../components/travel/DayFilter';
@@ -22,6 +23,7 @@ const TravelDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { travels, itineraries, accommodations, isLoading, fetchTravels, fetchTravelDetail, deleteItinerary } = useTravelStore();
+    const { user } = useAuthStore();
 
     // 상태 관리
     const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
@@ -121,6 +123,19 @@ const TravelDetail: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
+    const handleShare = () => {
+        if (!user || !travel) return;
+        const shareId = btoa(`${user.id}:${travel.id}`);
+        const shareUrl = `${window.location.origin}/share/${shareId}`;
+        
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('공유 링크가 클립보드에 복사되었습니다.');
+        }).catch(err => {
+            console.error('Failed to copy share link: ', err);
+            alert(`공유 링크: ${shareUrl}`);
+        });
+    };
+
     return (
         <div className="flex flex-col flex-1 overflow-hidden print:overflow-visible print:h-auto">
             {/* 헤더 섹션 */}
@@ -134,6 +149,7 @@ const TravelDetail: React.FC = () => {
                     setAddModalData(null);
                     setIsItineraryModalOpen(true);
                 }}
+                onShare={handleShare}
             />
 
             {/* 필터 및 뷰 토글 */}
@@ -231,14 +247,14 @@ const TravelDetail: React.FC = () => {
             </div>
 
             {/* 모달 */}
-            <ItineraryModal
+            <ItineraryDialog
                 isOpen={isItineraryModalOpen}
                 onClose={() => setIsItineraryModalOpen(false)}
                 travelId={id!}
                 editTarget={editTarget}
                 defaultData={addModalData}
             />
-            <AccommodationModal
+            <AccommodationDialog
                 isOpen={isAccModalOpen}
                 onClose={() => setIsAccModalOpen(false)}
                 travelId={id!}

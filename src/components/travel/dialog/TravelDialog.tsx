@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { Travel } from '../../types/travel';
-import { useTravelStore } from '../../store/travelStore';
-import { useModal } from '../../hooks/useModal';
+import type { Travel } from '../../../types/travel';
+import { useTravelStore } from '../../../store/travelStore';
+import { useModal } from '../../../hooks/useModal';
 
 /**
  * 새 여행 생성 및 기존 여행 수정을 위한 모달 컴포넌트입니다.
@@ -10,13 +10,13 @@ import { useModal } from '../../hooks/useModal';
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
-interface TravelModalProps {
+interface TravelDialogProps {
     isOpen: boolean;
     onClose: () => void;
     editTarget?: Travel | null;
 }
 
-const TravelModal: React.FC<TravelModalProps> = ({ isOpen, onClose, editTarget }) => {
+const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget }) => {
     const { addTravel, updateTravel } = useTravelStore();
     const [name, setName] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -34,6 +34,16 @@ const TravelModal: React.FC<TravelModalProps> = ({ isOpen, onClose, editTarget }
             setEndDate('');
         }
     }, [editTarget, isOpen]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
 
     if (!isOpen) {
         return null;
@@ -133,4 +143,4 @@ const TravelModal: React.FC<TravelModalProps> = ({ isOpen, onClose, editTarget }
     );
 };
 
-export default TravelModal;
+export default TravelDialog;

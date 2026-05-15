@@ -8,6 +8,7 @@ import MainLayout from './components/layout/MainLayout';
 import Login from './pages/Login';
 import TravelDetail from './pages/TravelDetail';
 import TravelList from './pages/TravelList';
+import SharedTravelDetail from './pages/SharedTravelDetail';
 
 /**
  * 앱 루트 컴포넌트입니다.
@@ -27,6 +28,7 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/share/:shareId" element={<SharedTravelDetail />} />
                 <Route
                     path="/"
                     element={

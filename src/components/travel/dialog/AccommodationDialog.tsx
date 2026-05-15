@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
-import { useTravelStore } from '../../store/travelStore';
+import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
-import type { Accommodation } from '../../types/travel';
-import { useModal } from '../../hooks/useModal';
+import type { Accommodation } from '../../../types/travel';
+import { useModal } from '../../../hooks/useModal';
 /**
  * 숙소 정보 추가/수정 모달 컴포넌트입니다.
  * 
@@ -17,7 +17,7 @@ interface Props {
     travelId: string;
 }
 
-const AccommodationModal: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
+const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
     const { travels, accommodations, setAccommodations } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
     const totalDays = travel ? differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1 : 1;
@@ -38,6 +38,16 @@ const AccommodationModal: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
             setAccList(initial);
         }
     }, [isOpen, travelId, accommodations, totalDays]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
 
     if (!isOpen) {
         return null;
@@ -168,4 +178,4 @@ const AccommodationModal: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
     );
 };
 
-export default AccommodationModal;
+export default AccommodationDialog;

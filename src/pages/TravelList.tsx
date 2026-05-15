@@ -3,7 +3,7 @@ import { Plus, Calendar, MapPin, MoreVertical, Edit2, Trash2, Upload } from 'luc
 import { Link, useNavigate } from 'react-router-dom';
 import { useTravelStore } from '../store/travelStore';
 import type { Travel, TravelExportData } from '../types/travel';
-import TravelModal from '../components/travel/TravelModal';
+import TravelDialog from '../components/travel/dialog/TravelDialog';
 
 /**
  * 메인 여행 목록 페이지입니다.
@@ -193,7 +193,7 @@ const TravelList: React.FC = () => {
                 </div>
             )}
 
-            <TravelModal
+            <TravelDialog
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 editTarget={editTarget}

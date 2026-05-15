@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Download, Printer, Home as HomeIcon, Plus } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Home as HomeIcon, Plus, Share2 } from 'lucide-react';
 import type { Travel } from '../../types/travel';
 
 interface DetailHeaderProps {
@@ -9,6 +9,7 @@ interface DetailHeaderProps {
     onExportJSON: () => void;
     onOpenAccModal: () => void;
     onOpenNewItinerary: () => void;
+    onShare?: () => void;
 }
 
 /**
@@ -18,7 +19,7 @@ interface DetailHeaderProps {
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
  */
-const DetailHeader: React.FC<DetailHeaderProps> = ({ travel, onPrint, onExportJSON, onOpenAccModal, onOpenNewItinerary }) => {
+const DetailHeader: React.FC<DetailHeaderProps> = ({ travel, onPrint, onExportJSON, onOpenAccModal, onOpenNewItinerary, onShare }) => {
     return (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 sm:mb-4 shrink-0 gap-2 sm:gap-4 print:hidden">
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -62,6 +63,18 @@ const DetailHeader: React.FC<DetailHeaderProps> = ({ travel, onPrint, onExportJS
                     />
                     <span className="hidden sm:inline">출력</span>
                 </button>
+                {onShare && (
+                    <button
+                        onClick={onShare}
+                        className="flex items-center space-x-1 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg text-xs sm:text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                    >
+                        <Share2
+                            size={14}
+                            className="sm:w-4 sm:h-4"
+                        />
+                        <span className="hidden sm:inline">공유</span>
+                    </button>
+                )}
                 <button
                     onClick={onOpenAccModal}
                     className="flex items-center space-x-1 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg text-xs sm:text-sm font-medium hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"

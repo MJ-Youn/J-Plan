@@ -17,9 +17,10 @@ interface Props {
     travelId: string;
     selectedItineraryId: string | null;
     onItineraryClick: (id: string) => void;
-    onEdit: (e: React.MouseEvent, iti: Itinerary) => void;
-    onDelete: (e: React.MouseEvent, id: string) => void;
+    onEdit?: (e: React.MouseEvent, iti: Itinerary) => void;
+    onDelete?: (e: React.MouseEvent, id: string) => void;
     onAddItinerary?: (defaultData: Partial<Itinerary>) => void;
+    readOnly?: boolean;
 }
 
 type ProcessedItinerary = Itinerary & {
@@ -40,7 +41,7 @@ const formatTime = (mins: number) => {
     return `${h}:${m}`;
 };
 
-const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, travelId, selectedItineraryId, onItineraryClick, onEdit, onDelete, onAddItinerary }) => {
+const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, travelId, selectedItineraryId, onItineraryClick, onEdit, onDelete, onAddItinerary, readOnly }) => {
     const { updateItinerary, hasUnsavedChanges, saveTravelDetail, fetchTravelDetail } = useTravelStore();
     const HOUR_HEIGHT = 160;
     const MIN_HEIGHT = 40;
@@ -147,6 +148,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
     // ─── 리사이즈 핸들러 ──────────────────────────────────────
     const handleResizeStart = (e: React.MouseEvent, ev: ProcessedItinerary, type: 'top' | 'bottom', dayEvents: ProcessedItinerary[]) => {
+        if (readOnly) return;
         if (isMobile) return; // 모바일에서는 드래그 리사이즈 비활성화 (버튼으로 대체)
         e.preventDefault();
         e.stopPropagation();
@@ -175,6 +177,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
     // ─── 이동 핸들러 ──────────────────────────────────────────
     const handleMoveStart = (e: React.MouseEvent, ev: ProcessedItinerary) => {
+        if (readOnly) return;
         if (isMobile) return; // 모바일에서는 드래그 이동 비활성화 (버튼으로 대체 가능)
         // 이미 리사이즈 중이거나 버튼을 클릭한 경우 무시
         if (resizeInfo || (e.target as HTMLElement).closest('button')) {
@@ -351,7 +354,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
             const widthPct = 100 / (maxCol + 1);
             const leftPct = p.col * widthPct;
             const nextP = placed[index + 1];
-            const isMoveableBetween = nextP && p.event.type !== '이동' && nextP.event.type !== '이동';
+            const isMoveableBetween = !readOnly && nextP && p.event.type !== '이동' && nextP.event.type !== '이동';
 
             const handleAddMoveBetween = (e: React.MouseEvent) => {
                 e.stopPropagation();
@@ -400,7 +403,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         left: `${leftPct}%`,
                         width: `${widthPct}%`,
                         marginTop: '-1px',
-                        cursor: moveInfo?.id === p.event.id ? 'grabbing' : 'pointer',
+                        cursor: readOnly ? 'pointer' : (moveInfo?.id === p.event.id ? 'grabbing' : 'pointer'),
                         pointerEvents: moveInfo?.id === p.event.id ? 'none' : 'auto',
                     }}
                     onMouseDown={(e) => handleMoveStart(e, p.event)}
@@ -419,7 +422,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                     }}
                 >
                     {/* Resize Handles - Desktop Only */}
-                    {!isMobile && (
+                    {!isMobile && !readOnly && (
                         <>
                             <div
                                 className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-amber-400 z-10 transition-colors"
@@ -449,18 +452,22 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                     <Navigation size={12} />
                                 </button>
                             )}
-                            <button
-                                onClick={(e) => onEdit(e, p.event)}
-                                className="text-gray-400 hover:text-blue-500"
-                            >
-                                <Edit2 size={12} />
-                            </button>
-                            <button
-                                onClick={(e) => onDelete(e, p.event.id)}
-                                className="text-gray-400 hover:text-red-500"
-                            >
-                                <Trash2 size={12} />
-                            </button>
+                            {!readOnly && onEdit && (
+                                <button
+                                    onClick={(e) => onEdit(e, p.event)}
+                                    className="text-gray-400 hover:text-blue-500"
+                                >
+                                    <Edit2 size={12} />
+                                </button>
+                            )}
+                            {!readOnly && onDelete && (
+                                <button
+                                    onClick={(e) => onDelete(e, p.event.id)}
+                                    className="text-gray-400 hover:text-red-500"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -605,6 +612,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                     key={col.id}
                                     className="flex-1 relative border-r border-gray-200 dark:border-gray-700 last:border-r-0"
                                     onMouseDown={(e) => {
+                                        if (readOnly) return;
                                         // 이미 존재하는 이벤트나 리사이즈 핸들을 클릭한 경우 무시
                                         if ((e.target as HTMLElement).closest('.itinerary-event')) {
                                             return;
@@ -740,20 +748,26 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                     </div>
 
                                     {/* 기본 액션 버튼 */}
-                                    <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
-                                        <button
-                                            onClick={(e) => onEdit(e, selectedEvent)}
-                                            className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
-                                        >
-                                            <Edit2 size={16} /> 수정하기
-                                        </button>
-                                        <button
-                                            onClick={(e) => onDelete(e, selectedEvent.id)}
-                                            className="w-14 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
+                                    {!readOnly && (
+                                        <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                                            {onEdit && (
+                                                <button
+                                                    onClick={(e) => onEdit(e, selectedEvent)}
+                                                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                                                >
+                                                    <Edit2 size={16} /> 수정하기
+                                                </button>
+                                            )}
+                                            {onDelete && (
+                                                <button
+                                                    onClick={(e) => onDelete(e, selectedEvent.id)}
+                                                    className="w-14 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -767,7 +781,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
     return (
         <div className="flex flex-col h-full bg-white dark:bg-gray-800/30 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden print:border-none print:overflow-visible print:h-auto print:block">
             {/* ── 미저장 변경 사항 알림 배너 ── */}
-            {hasUnsavedChanges && (
+            {!readOnly && hasUnsavedChanges && (
                 <div className="flex items-center justify-between px-3 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 shrink-0">
                     <span className="text-[11px] sm:text-xs font-medium text-orange-700 dark:text-orange-300 truncate mr-2">{isMapExpanded ? '⚠️ 미저장 변경사항 있음' : '⚠️ 미저장 변경 사항이 있습니다. 확정하려면 저장 버튼을 눌러주세요.'}</span>
                     <div className="flex items-center gap-2">

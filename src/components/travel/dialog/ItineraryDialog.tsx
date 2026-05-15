@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { useTravelStore } from '../../store/travelStore';
+import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
-import { useModal } from '../../hooks/useModal';
+import { useModal } from '../../../hooks/useModal';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
-import type { TransportMode, Itinerary, ItineraryType } from '../../types/travel';
+import type { TransportMode, Itinerary, ItineraryType } from '../../../types/travel';
 
 /**
  * 일정 추가 및 수정을 위한 모달 컴포넌트입니다.
@@ -20,7 +20,7 @@ interface Props {
     defaultData?: Partial<Itinerary> | null;
 }
 
-const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget, defaultData }) => {
+const ItineraryDialog: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget, defaultData }) => {
     const { travels, addItinerary, updateItinerary } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
     const { handleDragStart, modalStyle } = useModal(isOpen, onClose);
@@ -196,13 +196,23 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
                 }
             }
         } catch (error) {
-            console.error('[ItineraryModal] calculateDuration failed:', error);
+            console.error('[ItineraryDialog] calculateDuration failed:', error);
             setDuration('연동 오류');
             setDistance('');
         } finally {
             setIsCalculating(false);
         }
     };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen) {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
 
     if (!isOpen) {
         return null;
@@ -501,4 +511,4 @@ const ItineraryModal: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget
     );
 };
 
-export default ItineraryModal;
+export default ItineraryDialog;
