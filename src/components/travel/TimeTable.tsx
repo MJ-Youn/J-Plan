@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X, Navigation, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X, Navigation, Clock, ChevronUp, ChevronDown, AlignLeft } from 'lucide-react';
 import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
 import { getTypeEmoji, getTransportInfo } from '../../types/travel';
@@ -403,7 +403,7 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         left: `${leftPct}%`,
                         width: `${widthPct}%`,
                         marginTop: '-1px',
-                        cursor: readOnly ? 'pointer' : (moveInfo?.id === p.event.id ? 'grabbing' : 'pointer'),
+                        cursor: readOnly ? 'pointer' : moveInfo?.id === p.event.id ? 'grabbing' : 'pointer',
                         pointerEvents: moveInfo?.id === p.event.id ? 'none' : 'auto',
                     }}
                     onMouseDown={(e) => handleMoveStart(e, p.event)}
@@ -488,12 +488,12 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                         </div>
                     )}
 
-                    <div className={`text-[10px] sm:text-xs text-gray-500 flex items-center gap-1 ${isShortEvent ? 'truncate' : ''}`}>
+                    <div className={`text-[10px] sm:text-xs text-gray-500 flex items-start gap-1 ${isShortEvent ? 'truncate' : ''}`}>
                         {p.event.address && (
                             <>
                                 <MapIcon
                                     size={10}
-                                    className="shrink-0"
+                                    className="shrink-0 mt-0.5"
                                 />
                                 <span className={isShortEvent ? 'truncate' : 'break-all'}>
                                     {p.event.address}
@@ -517,6 +517,16 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                             </>
                         )}
                     </div>
+
+                    {!isShortEvent && p.event.description && (
+                        <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-start gap-1 line-clamp-2">
+                            <AlignLeft
+                                size={10}
+                                className="shrink-0 mt-0.5"
+                            />
+                            <span className="break-all whitespace-pre-wrap leading-tight">{p.event.description}</span>
+                        </div>
+                    )}
                 </div>
             );
         });
