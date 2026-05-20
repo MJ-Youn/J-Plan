@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
 import type { Accommodation, Itinerary, ItineraryType, TransportMode } from '../../types/travel';
-import { getTypeEmoji, getTransportInfo } from '../../types/travel';
+import { getTypeEmoji, getTransportInfo, formatDuration } from '../../types/travel';
 
 /**
  * 지도 컴포넌트의 Props 인터페이스
@@ -311,7 +311,7 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
                                 {marker.transportMode && <span>{getTransportInfo(marker.transportMode).emoji}</span>}
                                 {marker.distance && <span>{marker.distance}</span>}
                                 {marker.distance && marker.duration && <span>·</span>}
-                                <span>{marker.duration || marker.content}</span>
+                                <span>{formatDuration(marker.duration) || marker.content}</span>
                             </div>
                         ) : (
                             <div

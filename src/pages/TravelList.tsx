@@ -154,7 +154,7 @@ const TravelList: React.FC = () => {
                                                 size={16}
                                                 className="text-gray-400"
                                             />
-                                            <span>여행 일정을 확인해보세요</span>
+                                            <span>{travel.region || '지역 정보 없음'}</span>
                                         </div>
                                     </div>
                                 </Link>

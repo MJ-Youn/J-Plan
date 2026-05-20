@@ -19,6 +19,7 @@ interface TravelDialogProps {
 const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget }) => {
     const { addTravel, updateTravel } = useTravelStore();
     const [name, setName] = useState('');
+    const [region, setRegion] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
@@ -26,10 +27,12 @@ const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget
     useEffect(() => {
         if (editTarget) {
             setName(editTarget.name);
+            setRegion(editTarget.region || '');
             setStartDate(editTarget.startDate);
             setEndDate(editTarget.endDate);
         } else {
             setName('');
+            setRegion('');
             setStartDate('');
             setEndDate('');
         }
@@ -59,9 +62,9 @@ const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget
         }
 
         if (editTarget) {
-            updateTravel(editTarget.id, { name, startDate, endDate });
+            updateTravel(editTarget.id, { name, region, startDate, endDate });
         } else {
-            addTravel({ name, startDate, endDate });
+            addTravel({ name, region, startDate, endDate });
         }
         onClose();
     };
@@ -99,6 +102,16 @@ const TravelDialog: React.FC<TravelDialogProps> = ({ isOpen, onClose, editTarget
                             onChange={(e) => setName(e.target.value)}
                             className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
                             placeholder="여행 이름을 입력하세요"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">지역 (선택)</label>
+                        <input
+                            type="text"
+                            value={region}
+                            onChange={(e) => setRegion(e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                            placeholder="예: 부산, 제주도, 오사카"
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-4">

@@ -7,6 +7,7 @@
 export interface Travel {
   id: string;
   name: string;
+  region?: string;
   startDate: string;
   endDate: string;
 }
@@ -70,6 +71,20 @@ export const getTypeEmoji = (type: ItineraryType, mode?: TransportMode): string 
     case '식사': return '🍽️';
     default: return '📌';
   }
+};
+
+export const formatDuration = (durationStr?: string): string => {
+  if (!durationStr) return '';
+  return durationStr
+    .replace(/hours?/gi, '시간')
+    .replace(/mins?/gi, '분')
+    .replace(/days?/gi, '일')
+    .replace(/hr/gi, '시간')
+    .replace(/\s+시간/g, '시간')
+    .replace(/\s+분/g, '분')
+    .replace(/\s+일/g, '일')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 /**
