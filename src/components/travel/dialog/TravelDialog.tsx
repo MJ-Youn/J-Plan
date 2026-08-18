@@ -6,7 +6,7 @@ import { useDialog } from '../../../hooks/useDialog';
 
 /**
  * 새 여행 생성 및 기존 여행 수정을 위한 모달 컴포넌트입니다.
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */

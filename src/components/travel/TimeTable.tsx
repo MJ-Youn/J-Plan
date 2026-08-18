@@ -1,8 +1,8 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Map as MapIcon, ArrowRight, Edit2, Trash2, Save, X, Navigation, Clock, ChevronUp, ChevronDown, AlignLeft } from 'lucide-react';
+import { AlignLeft, ArrowRight, ChevronDown, ChevronUp, Clock, Edit2, Map as MapIcon, Navigation, Save, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
-import { getTypeEmoji, getTransportInfo } from '../../types/travel';
+import { getTransportInfo, getTypeEmoji } from '../../types/travel';
 /**
  * 시간대별 일정을 표시하는 타임테이블 컴포넌트입니다.
  *
@@ -46,14 +46,19 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
     const HOUR_HEIGHT = 160;
     const MIN_HEIGHT = 40;
 
-    // 모바일 환경 감지
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    // 모바일 및 패드(터치) 환경 감지
+    const checkIsTouchDevice = useCallback(() => {
+        if (typeof window === 'undefined') return false;
+        return 'ontouchstart' in window || navigator.maxTouchPoints > 0 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    }, []);
+
+    const [isMobile, setIsMobile] = useState(checkIsTouchDevice());
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        const handleResize = () => setIsMobile(checkIsTouchDevice());
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    }, [checkIsTouchDevice]);
 
     // 리사이즈 상태 관리
     const [resizeInfo, setResizeInfo] = useState<{
