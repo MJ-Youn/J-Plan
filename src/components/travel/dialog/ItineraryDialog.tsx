@@ -4,11 +4,12 @@ import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useDialog } from '../../../hooks/useDialog';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
+import { calculateRouteInfo } from '../../../utils/routeCalculator';
 import type { TransportMode, Itinerary, ItineraryType } from '../../../types/travel';
 
 /**
  * 일정 추가 및 수정을 위한 모달 컴포넌트입니다.
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
@@ -107,93 +108,17 @@ const ItineraryDialog: React.FC<Props> = ({ isOpen, onClose, travelId, editTarge
         setIsCalculating(true);
 
         try {
-            const geocoder = new geocodingLib.Geocoder();
+            const res = await calculateRouteInfo({
+                originAddress: address,
+                destAddress: arrivalAddress,
+                transportMode,
+                routesLib,
+                geocodingLib,
+            });
 
-            // 1. 출발지/도착지 좌표 및 국가 정보 조회 (병렬 처리)
-            const [originRes, destRes] = await Promise.all([geocoder.geocode({ address, language: 'ko' }), geocoder.geocode({ address: arrivalAddress, language: 'ko' })]);
-
-            if (!originRes.results?.[0] || !destRes.results?.[0]) {
-                setDuration('위치 찾을 수 없음');
-                return;
-            }
-
-            const isKR = (res: google.maps.GeocoderResponse) => res.results[0].address_components.some((c) => c.types.includes('country') && c.short_name === 'KR');
-
-            const startLoc = originRes.results[0].geometry.location;
-            const endLoc = destRes.results[0].geometry.location;
-            const originStr = `${startLoc.lng()},${startLoc.lat()}`;
-            const destStr = `${endLoc.lng()},${endLoc.lat()}`;
-
-            // 2. 한국 여부에 따른 분기 처리
-            if (isKR(originRes) && isKR(destRes) && (transportMode === 'DRIVING' || transportMode === 'WALKING' || transportMode === 'BICYCLING')) {
-                // [한국 - 자동차/도보/자전거] Kakao Mobility 호출
-                const KAKAO_KEY = import.meta.env.VITE_KAKAO_REST_API_KEY;
-                let data;
-
-                if (import.meta.env.DEV && KAKAO_KEY) {
-                    // 로컬 개발 환경: 프록시 없이 직접 호출 (Vite의 functions 인식 문제 해결)
-                    const res = await fetch(`https://apis-navi.kakaomobility.com/v1/directions?origin=${originStr}&destination=${destStr}`, {
-                        headers: { Authorization: `KakaoAK ${KAKAO_KEY}` },
-                    });
-                    if (!res.ok) {
-                        throw new Error('Kakao Direct API Error');
-                    }
-                    data = await res.json();
-                } else {
-                    // 운영 환경: Cloudflare Worker 프록시 경유
-                    const res = await fetch(`/api/geo/kakao-directions?origin=${originStr}&destination=${destStr}`);
-                    if (!res.ok) {
-                        throw new Error('Kakao Proxy Error');
-                    }
-                    data = await res.json();
-                }
-
-                if (data.routes && data.routes[0]) {
-                    const summary = data.routes[0].summary;
-                    const distanceMeters = summary.distance; // 미터 단위
-                    const distanceText = distanceMeters < 1000 ? `${distanceMeters}m` : `${(distanceMeters / 1000).toFixed(1)}km`;
-                    setDistance(distanceText);
-
-                    if (transportMode === 'DRIVING') {
-                        // 자동차는 Kakao가 주는 duration(초) 사용
-                        const mins = Math.round(summary.duration / 60);
-                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
-                    } else if (transportMode === 'WALKING') {
-                        // 도보는 도로 거리 기준 분당 80m 계산 (4.8km/h)
-                        const mins = Math.round(distanceMeters / 80);
-                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
-                    } else if (transportMode === 'BICYCLING') {
-                        // 자전거는 도로 거리 기준 분당 250m 계산 (15km/h)
-                        const mins = Math.round(distanceMeters / 250);
-                        setDuration(mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`);
-                    }
-                } else {
-                    setDuration('경로 찾을 수 없음');
-                    setDistance('');
-                }
-            } else {
-                // [해외 또는 대중교통] 기존 Google Distance Matrix 사용
-                const service = new routesLib.DistanceMatrixService();
-                const response = await service.getDistanceMatrix({
-                    origins: [startLoc],
-                    destinations: [endLoc],
-                    travelMode: google.maps.TravelMode[transportMode as keyof typeof google.maps.TravelMode],
-                });
-
-                const element = response.rows[0].elements[0];
-                if (element.status === 'OK') {
-                    let durationText = element.duration.text;
-                    // 영문을 한글로 번역 (hour -> 시간, min -> 분, day -> 일)
-                    durationText = durationText.replace(/hours?/g, '시간').replace(/mins?/g, '분').replace(/days?/g, '일').replace(/\s+/g, ' ').trim();
-                    setDuration(durationText);
-                    setDistance(element.distance.text);
-                } else if (element.status === 'ZERO_RESULTS') {
-                    setDuration('경로 찾을 수 없음');
-                    setDistance('');
-                } else {
-                    setDuration('계산 실패');
-                    setDistance('');
-                }
+            if (res) {
+                setDuration(res.duration);
+                setDistance(res.distance);
             }
         } catch (error) {
             console.error('[ItineraryDialog] calculateDuration failed:', error);
@@ -203,16 +128,6 @@ const ItineraryDialog: React.FC<Props> = ({ isOpen, onClose, travelId, editTarge
             setIsCalculating(false);
         }
     };
-
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
 
     if (!isOpen) {
         return null;

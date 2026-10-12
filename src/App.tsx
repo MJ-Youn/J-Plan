@@ -27,8 +27,14 @@ function App() {
     const content = (
         <BrowserRouter>
             <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/share/:shareId" element={<SharedTravelDetail />} />
+                <Route
+                    path="/login"
+                    element={<Login />}
+                />
+                <Route
+                    path="/share/:shareId"
+                    element={<SharedTravelDetail />}
+                />
                 <Route
                     path="/"
                     element={
@@ -37,9 +43,23 @@ function App() {
                         </ProtectedRoute>
                     }
                 >
-                    <Route index element={<Navigate to="/travels" replace />} />
-                    <Route path="travels" element={<TravelList />} />
-                    <Route path="travels/:id" element={<TravelDetail />} />
+                    <Route
+                        index
+                        element={
+                            <Navigate
+                                to="/travels"
+                                replace
+                            />
+                        }
+                    />
+                    <Route
+                        path="travels"
+                        element={<TravelList />}
+                    />
+                    <Route
+                        path="travels/:id"
+                        element={<TravelDetail />}
+                    />
                 </Route>
             </Routes>
         </BrowserRouter>

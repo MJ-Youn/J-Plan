@@ -23,7 +23,12 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         if (!isLoading && user) {
-            navigate('/travels');
+            const hasPendingImport = sessionStorage.getItem('jplan_pending_import');
+            if (hasPendingImport) {
+                navigate('/import', { replace: true });
+            } else {
+                navigate('/travels');
+            }
         }
     }, [user, isLoading, navigate]);
 

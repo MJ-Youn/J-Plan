@@ -21,6 +21,7 @@ interface TravelState {
     updateItinerary: (id: string, itinerary: Partial<Itinerary>) => Promise<void>;
     deleteItinerary: (id: string) => Promise<void>;
     importTravel: (data: TravelExportData) => Promise<void>;
+    updateFullTravelDetail: (travelId: string, data: TravelExportData) => Promise<void>;
 
     // 수동 저장을 위한 상태 및 함수
     hasUnsavedChanges: boolean;
@@ -309,6 +310,45 @@ export const useTravelStore = create<TravelState>((set, get) => ({
             }
         } catch (error) {
             console.error('[TravelStore] importTravel failed:', error);
+        }
+    },
+
+    /**
+     * 특정 여행의 전체 데이터(기본정보, 일정, 숙소)를 JSON 수정본으로 일괄 갱신합니다.
+     */
+    updateFullTravelDetail: async (travelId, data) => {
+        if (import.meta.env.DEV) {
+            const travels = get().travels.map((t) => (t.id === travelId ? data.travel : t));
+            localStorage.setItem(LOCAL_STORAGE_KEY_TRAVELS, JSON.stringify(travels));
+            localStorage.setItem(getLocalDetailKey(travelId), JSON.stringify(data));
+            set({
+                travels,
+                itineraries: data.itineraries,
+                accommodations: data.accommodations,
+                hasUnsavedChanges: false,
+            });
+            return;
+        }
+
+        try {
+            // 1. 상세 R2 파일 덮어쓰기
+            const res = await fetch(`/api/data/travels/${travelId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+
+            if (res.ok) {
+                // 2. 여행 메타정보(이름, 날짜 등)가 변경되었을 수 있으므로 목록도 갱신
+                set((state) => ({
+                    travels: state.travels.map((t) => (t.id === travelId ? data.travel : t)),
+                    itineraries: data.itineraries,
+                    accommodations: data.accommodations,
+                    hasUnsavedChanges: false,
+                }));
+            }
+        } catch (error) {
+            console.error('[TravelStore] updateFullTravelDetail failed:', error);
         }
     },
 }));

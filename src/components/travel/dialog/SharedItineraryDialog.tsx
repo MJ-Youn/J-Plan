@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { X, MapPin, Clock, AlignLeft, Info } from 'lucide-react';
 import type { Itinerary } from '../../../types/travel';
 import { getTypeEmoji, getTransportInfo } from '../../../types/travel';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 interface Props {
     isOpen: boolean;
@@ -16,15 +17,8 @@ interface Props {
  * @since 2026. 05. 15.
  */
 const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) => {
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+    // Mac, Windows, Android 모든 환경의 ESC 키 닫기 처리
+    useEscapeKey(isOpen, onClose);
 
     if (!isOpen || !itinerary) return null;
 
@@ -52,12 +46,8 @@ const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) 
                 {/* 컨텐츠 */}
                 <div className="p-6 space-y-6">
                     <div>
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-white break-all mb-1">
-                            {itinerary.content}
-                        </h3>
-                        <div className="flex items-center text-amber-600 dark:text-amber-500 font-bold text-sm">
-                            {itinerary.dayIndex}일차 일정
-                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white break-all mb-1">{itinerary.content}</h3>
+                        <div className="flex items-center text-amber-600 dark:text-amber-500 font-bold text-sm">{itinerary.dayIndex}일차 일정</div>
                     </div>
 
                     <div className="space-y-4">
@@ -79,12 +69,8 @@ const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) 
                                     <MapPin size={16} />
                                 </div>
                                 <div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-0.5">
-                                        {itinerary.type === '이동' ? '출발지' : '장소'}
-                                    </div>
-                                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all">
-                                        {itinerary.address}
-                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-0.5">{itinerary.type === '이동' ? '출발지' : '장소'}</div>
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all">{itinerary.address}</div>
                                 </div>
                             </div>
                         )}
@@ -96,9 +82,7 @@ const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) 
                                 </div>
                                 <div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-0.5">도착지</div>
-                                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all">
-                                        {itinerary.arrivalAddress}
-                                    </div>
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all">{itinerary.arrivalAddress}</div>
                                 </div>
                             </div>
                         )}
@@ -128,9 +112,7 @@ const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) 
                                 </div>
                                 <div className="w-full">
                                     <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">메모</div>
-                                    <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl">
-                                        {itinerary.description}
-                                    </div>
+                                    <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl">{itinerary.description}</div>
                                 </div>
                             </div>
                         )}

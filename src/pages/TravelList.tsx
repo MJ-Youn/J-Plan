@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, MapPin, MoreVertical, Edit2, Trash2, Upload } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTravelStore } from '../store/travelStore';
-import type { Travel, TravelExportData } from '../types/travel';
+import type { Travel } from '../types/travel';
 import TravelDialog from '../components/travel/dialog/TravelDialog';
+import JsonImportModal from '../components/travel/dialog/JsonImportModal';
 
 /**
  * 메인 여행 목록 페이지입니다.
@@ -15,9 +16,9 @@ const TravelList: React.FC = () => {
     const { travels, isLoading, fetchTravels, deleteTravel, importTravel } = useTravelStore();
     const navigate = useNavigate();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Travel | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetchTravels();
@@ -51,50 +52,13 @@ const TravelList: React.FC = () => {
         setOpenMenuId(openMenuId === id ? null : id);
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) {
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const json = event.target?.result as string;
-                const data = JSON.parse(json) as TravelExportData;
-
-                if (data.version && data.travel) {
-                    importTravel(data);
-                    navigate(`/travels/${data.travel.id}`);
-                } else {
-                    alert('올바른 J-Plan 데이터 파일이 아닙니다.');
-                }
-            } catch (error) {
-                alert('파일을 읽는 중 오류가 발생했습니다.');
-                console.error(error);
-            }
-            // 입력 초기화
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-        };
-        reader.readAsText(file);
-    };
-
     return (
         <div className="animate-fade-in-up pb-20">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
                 <h2 className="text-3xl font-bold">내 여행 일정</h2>
                 <div className="flex items-center space-x-2">
-                    <input
-                        type="file"
-                        accept=".json"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                        className="hidden"
-                    />
                     <button
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => setIsJsonModalOpen(true)}
                         className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
                     >
                         <Upload size={20} />
@@ -197,6 +161,15 @@ const TravelList: React.FC = () => {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 editTarget={editTarget}
+            />
+
+            <JsonImportModal
+                isOpen={isJsonModalOpen}
+                onClose={() => setIsJsonModalOpen(false)}
+                onImport={async (data) => {
+                    await importTravel(data);
+                    navigate(`/travels/${data.travel.id}`);
+                }}
             />
         </div>
     );

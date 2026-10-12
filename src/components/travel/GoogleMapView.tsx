@@ -84,7 +84,14 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
         let isCancelled = false;
 
         const fetchCoordinates = async () => {
-            setIsLoading(true);
+            // 마커가 아직 하나도 없을 때(최초 로드 시)만 로딩 마스킹을 표시하고,
+            // 이미 마커가 있는 상태에서 데이터가 갱신될 때는 깜빡임 방지를 위해 로딩 마스킹을 띄우지 않습니다.
+            setMarkers((prev) => {
+                if (prev.length === 0) {
+                    setIsLoading(true);
+                }
+                return prev;
+            });
             const newMarkers: GeocodedMarker[] = [];
             const newPositions: { lat: number; lng: number }[] = [];
 
@@ -227,7 +234,7 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
         return () => {
             isCancelled = true;
         };
-    }, [itineraries, geocodingLib, map, selectedDay, accommodations, selectedItineraryId]);
+    }, [itineraries, geocodingLib, map, selectedDay, accommodations]);
 
     // 2. 선택된 일정(selectedItineraryId)이 변경될 때 지도를 해당 위치로 이동
     useEffect(() => {

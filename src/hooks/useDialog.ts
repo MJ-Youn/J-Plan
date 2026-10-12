@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEscapeKey } from './useEscapeKey';
 
 /**
  * 모달 드래그 이동 및 ESC 키 닫기 기능을 제공하는 커스텀 훅
@@ -18,19 +19,8 @@ export const useDialog = (isOpen: boolean, onClose: () => void) => {
         }
     }, [isOpen]);
 
-    // ESC 키로 모달 닫기
-    useEffect(() => {
-        if (!isOpen) {
-            return;
-        }
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-            onClose();
-        }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+    // Mac, Windows, Android 모든 환경의 ESC 키 닫기 처리
+    useEscapeKey(isOpen, onClose);
 
     // 드래그 시작 (헤더 mousedown)
     const handleDragStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -48,8 +38,8 @@ export const useDialog = (isOpen: boolean, onClose: () => void) => {
 
         const handleMouseMove = (ev: MouseEvent) => {
             if (!dragging.current) {
-            return;
-        }
+                return;
+            }
             setPosition({
                 x: ev.clientX - startOffset.current.x,
                 y: ev.clientY - startOffset.current.y,

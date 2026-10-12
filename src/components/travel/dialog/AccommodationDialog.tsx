@@ -7,7 +7,7 @@ import type { Accommodation } from '../../../types/travel';
 import { useDialog } from '../../../hooks/useDialog';
 /**
  * 숙소 정보 추가/수정 모달 컴포넌트입니다.
- * 
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
@@ -38,16 +38,6 @@ const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => 
             setAccList(initial);
         }
     }, [isOpen, travelId, accommodations, totalDays]);
-
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
 
     if (!isOpen) {
         return null;
