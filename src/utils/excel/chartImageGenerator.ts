@@ -110,3 +110,161 @@ export async function generateDistanceChartPng(items: DayDistanceChartItem[]): P
     const arrayBuffer = await blob.arrayBuffer();
     return new Uint8Array(arrayBuffer);
 }
+
+export interface ExpenseCategoryChartItem {
+    category: string;
+    krwAmount: number;
+    percent: number;
+}
+
+export interface ExpenseDailyChartItem {
+    label: string;
+    krwAmount: number;
+}
+
+const EXPENSE_CAT_COLORS: Record<string, string> = {
+    식비: '#f59e0b',
+    숙박: '#6366f1',
+    '교통·렌터카': '#3b82f6',
+    '관광·쇼핑': '#10b981',
+    기타: '#a855f7',
+};
+
+/**
+ * 카테고리별 지출 비율(도넛 차트) + 일차별 지출(막대 그래프)을
+ * Excel 시트 삽입용 고해상도 PNG(Canvas)로 생성합니다.
+ */
+export async function generateExpenseChartPng(params: {
+    categories: ExpenseCategoryChartItem[];
+    dailyTotals: ExpenseDailyChartItem[];
+    totalKrw: number;
+}): Promise<Uint8Array | null> {
+    const { categories, dailyTotals, totalKrw } = params;
+    if (typeof document === 'undefined' || totalKrw <= 0) {
+        return null;
+    }
+
+    const scale = 2;
+    const width = 760;
+    const height = 280;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.scale(scale, scale);
+
+    // 배경 및 외곽선
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+    // 가운데 구분선
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.beginPath();
+    ctx.moveTo(370, 16);
+    ctx.lineTo(370, height - 16);
+    ctx.stroke();
+
+    // [좌측] 카테고리별 도넛 차트
+    ctx.fillStyle = '#1E3A5F';
+    ctx.font = 'bold 13px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('항목별 지출 비율 (KRW)', 20, 28);
+
+    const cx = 105;
+    const cy = 148;
+    const outerR = 66;
+    const innerR = 40;
+    let startAngle = -Math.PI / 2;
+
+    categories.forEach((c) => {
+        const sliceAngle = (c.percent / 100) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR, startAngle, startAngle + sliceAngle);
+        ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = EXPENSE_CAT_COLORS[c.category] || '#94a3b8';
+        ctx.fill();
+        startAngle += sliceAngle;
+    });
+
+    // 도넛 중앙 총액
+    ctx.fillStyle = '#64748B';
+    ctx.font = '10px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('총 지출', cx, cy - 4);
+    ctx.fillStyle = '#0F172A';
+    ctx.font = 'bold 12px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(`₩${Math.round(totalKrw).toLocaleString()}`, cx, cy + 12);
+
+    // 도넛 범례
+    let legendY = 72;
+    categories.forEach((c) => {
+        ctx.fillStyle = EXPENSE_CAT_COLORS[c.category] || '#94a3b8';
+        ctx.fillRect(190, legendY - 9, 10, 10);
+        ctx.fillStyle = '#334155';
+        ctx.font = 'bold 11px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.category, 206, legendY);
+        ctx.fillStyle = '#64748B';
+        ctx.font = '10px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+        ctx.fillText(`₩${Math.round(c.krwAmount).toLocaleString()} (${c.percent.toFixed(1)}%)`, 206, legendY + 14);
+        legendY += 36;
+    });
+
+    // [우측] 일차별 지출 막대 그래프
+    ctx.fillStyle = '#1E3A5F';
+    ctx.font = 'bold 13px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('일차별 지출 현황 (KRW)', 390, 28);
+
+    if (dailyTotals.length > 0) {
+        const padLeft = 400;
+        const padRight = 20;
+        const padTop = 55;
+        const padBottom = 42;
+        const plotW = width - padLeft - padRight;
+        const plotH = height - padTop - padBottom;
+        const maxVal = Math.max(10000, ...dailyTotals.map((d) => d.krwAmount));
+
+        // 바닥선
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, padTop + plotH);
+        ctx.lineTo(padLeft + plotW, padTop + plotH);
+        ctx.stroke();
+
+        const slotW = plotW / dailyTotals.length;
+        const barW = Math.min(40, Math.max(16, slotW * 0.5));
+
+        dailyTotals.forEach((d, idx) => {
+            const centerX = padLeft + slotW * idx + slotW / 2;
+            const barH = (d.krwAmount / maxVal) * plotH;
+            const x = centerX - barW / 2;
+            const y = padTop + plotH - barH;
+
+            ctx.fillStyle = '#D97706';
+            ctx.fillRect(x, y, barW, Math.max(barH, d.krwAmount > 0 ? 2 : 0));
+
+            ctx.fillStyle = '#1E3A5F';
+            ctx.font = 'bold 10px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+            ctx.textAlign = 'center';
+            const labelVal = d.krwAmount >= 10000 ? `${Math.round(d.krwAmount / 10000)}만` : Math.round(d.krwAmount).toLocaleString();
+            ctx.fillText(d.krwAmount > 0 ? labelVal : '-', centerX, y - 6);
+
+            ctx.fillStyle = '#334155';
+            ctx.font = '11px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+            ctx.fillText(d.label, centerX, padTop + plotH + 18);
+        });
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) return null;
+    const arrayBuffer = await blob.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+}

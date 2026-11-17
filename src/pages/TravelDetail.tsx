@@ -37,6 +37,9 @@ const TravelDetail: React.FC = () => {
         travels,
         itineraries,
         accommodations,
+        checklists,
+        expenses,
+        participants,
         isLoading,
         conflictState,
         clearConflict,
@@ -142,6 +145,9 @@ const TravelDetail: React.FC = () => {
             travel: travel,
             itineraries: allTravelItineraries,
             accommodations: travelAccommodations,
+            checklists,
+            expenses,
+            participants,
         };
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -224,6 +230,9 @@ const TravelDetail: React.FC = () => {
                 travel,
                 itineraries: newItineraries,
                 accommodations: travelAccommodations,
+                checklists,
+                expenses,
+                participants,
             };
 
             await updateFullTravelDetail(id, newExportData);
@@ -393,6 +402,9 @@ const TravelDetail: React.FC = () => {
                     travel,
                     itineraries: allTravelItineraries,
                     accommodations: travelAccommodations,
+                    checklists,
+                    expenses,
+                    participants,
                 }}
                 onSave={async (newData) => {
                     if (id) {

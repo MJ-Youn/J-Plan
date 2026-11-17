@@ -61,6 +61,9 @@ const SharedTravelDetail: React.FC = () => {
         travels,
         itineraries: storeItineraries,
         accommodations: storeAccommodations,
+        checklists,
+        expenses,
+        participants,
         currentRevision,
         lastUpdatedBy,
         conflictState,
@@ -379,6 +382,9 @@ const SharedTravelDetail: React.FC = () => {
                 travel,
                 itineraries: nextItineraries,
                 accommodations: travelAccommodations,
+                checklists,
+                expenses,
+                participants,
             });
             alert(`총 ${updatedMap.size}개의 이동 일정이 업데이트되었습니다.`);
         } finally {

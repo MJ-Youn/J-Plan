@@ -1,5 +1,20 @@
 import { differenceInDays, parseISO } from 'date-fns';
-import type { Accommodation, Itinerary, ItineraryType, Travel, TravelExportMeta } from '../../types/travel';
+import type {
+    Accommodation,
+    ExpenseCategory,
+    ExpenseCurrency,
+    ExpenseItem,
+    Itinerary,
+    ItineraryType,
+    Travel,
+    TravelExportMeta,
+} from '../../types/travel';
+import {
+    convertToKrw,
+    DEFAULT_RATES_TO_KRW,
+    formatItineraryCostsMultiline,
+    getItineraryCosts,
+} from '../expenseService';
 import {
     buildGoogleMapsSearchUrl,
     findDayAccommodation,
@@ -30,6 +45,19 @@ export interface ReportRowItem {
     destMapUrl: string | null;
     transportLabel: string;
     distanceKm: number;
+    costText: string;
+    costKrw: number;
+}
+
+export interface CombinedReportExpense extends ExpenseItem {
+    source: 'itinerary' | 'manual';
+    krwAmount: number;
+}
+
+export interface ExpenseCategorySummaryItem {
+    category: ExpenseCategory;
+    krwAmount: number;
+    percent: number;
 }
 
 export interface DaySheetModel {
@@ -45,6 +73,7 @@ export interface DaySheetModel {
     drivingKm: number;
     totalKm: number;
     toll: number;
+    expenseKrw: number;
     memo: string;
 }
 
@@ -71,6 +100,8 @@ export interface TravelReportModel {
     daySheets: DaySheetModel[];
     unifiedRows: ReportRowItem[];
     accommodations: AccommodationReportItem[];
+    combinedExpenses: CombinedReportExpense[];
+    expenseCategorySummary: ExpenseCategorySummaryItem[];
     totals: {
         itineraries: number;
         meals: number;
@@ -78,7 +109,17 @@ export interface TravelReportModel {
         drivingKm: number;
         totalKm: number;
         toll: number;
+        expenseKrw: number;
     };
+}
+
+const CATEGORY_ORDER: ExpenseCategory[] = ['식비', '숙박', '교통·렌터카', '관광·쇼핑', '기타'];
+
+function mapItineraryTypeToExpenseCategory(type: ItineraryType): ExpenseCategory {
+    if (type === '이동') return '교통·렌터카';
+    if (type === '식사') return '식비';
+    if (type === '관광') return '관광·쇼핑';
+    return '기타';
 }
 
 /**
@@ -92,9 +133,18 @@ export function buildTravelReportModel(params: {
     travel: Travel;
     itineraries: Itinerary[];
     accommodations: Accommodation[];
+    expenses?: ExpenseItem[];
+    rates?: Record<ExpenseCurrency, number>;
     meta?: TravelExportMeta;
 }): TravelReportModel {
-    const { travel, itineraries, accommodations, meta = travel.exportMeta || {} } = params;
+    const {
+        travel,
+        itineraries,
+        accommodations,
+        expenses = [],
+        rates = DEFAULT_RATES_TO_KRW,
+        meta = travel.exportMeta || {},
+    } = params;
 
     const totalDays = Math.max(1, differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1);
     const nightCount = Math.max(0, totalDays - 1);
@@ -132,6 +182,9 @@ export function buildTravelReportModel(params: {
 
             const originAddress = iti.address?.trim() || '-';
             const destAddress = iti.type === '이동' && iti.arrivalAddress?.trim() ? iti.arrivalAddress.trim() : '-';
+            const itiCosts = getItineraryCosts(iti);
+            const costText = formatItineraryCostsMultiline(itiCosts);
+            const costKrw = itiCosts.reduce((sum, c) => sum + convertToKrw(c.amount, c.currency, rates), 0);
 
             const item: ReportRowItem = {
                 id: iti.id,
@@ -150,6 +203,8 @@ export function buildTravelReportModel(params: {
                 destMapUrl: buildGoogleMapsSearchUrl(destAddress, iti.arrivalLat, iti.arrivalLng),
                 transportLabel,
                 distanceKm: km,
+                costText,
+                costKrw,
             };
 
             unifiedRows.push({
@@ -159,6 +214,11 @@ export function buildTravelReportModel(params: {
 
             return item;
         });
+
+        const manualDayExpenseKrw = expenses
+            .filter((e) => e.dayIndex === dayIndex)
+            .reduce((sum, e) => sum + convertToKrw(e.amount, e.currency, rates), 0);
+        const itiDayExpenseKrw = rows.reduce((sum, r) => sum + r.costKrw, 0);
 
         daySheets.push({
             dayIndex,
@@ -173,6 +233,7 @@ export function buildTravelReportModel(params: {
             drivingKm: Math.round(drivingKm * 10) / 10,
             totalKm: Math.round(totalKm * 10) / 10,
             toll,
+            expenseKrw: Math.round(itiDayExpenseKrw + manualDayExpenseKrw),
             memo,
         });
     }
@@ -194,6 +255,42 @@ export function buildTravelReportModel(params: {
             };
         });
 
+    const combinedFromItineraries: CombinedReportExpense[] = itineraries
+        .filter((i) => i.travelId === travel.id)
+        .flatMap((i) =>
+            getItineraryCosts(i).map((c) => ({
+                id: `${i.id}:${c.id}`,
+                dayIndex: i.dayIndex,
+                category: mapItineraryTypeToExpenseCategory(i.type),
+                title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
+                amount: c.amount,
+                currency: c.currency,
+                paidBy: c.paidBy,
+                source: 'itinerary' as const,
+                krwAmount: convertToKrw(c.amount, c.currency, rates),
+            })),
+        );
+
+    const combinedFromManual: CombinedReportExpense[] = expenses.map((e) => ({
+        ...e,
+        source: 'manual' as const,
+        krwAmount: convertToKrw(e.amount, e.currency, rates),
+    }));
+
+    const combinedExpenses = [...combinedFromItineraries, ...combinedFromManual].sort((a, b) => a.dayIndex - b.dayIndex);
+    const totalExpenseKrw = Math.round(combinedExpenses.reduce((sum, e) => sum + e.krwAmount, 0));
+
+    const catMap = new Map<ExpenseCategory, number>();
+    CATEGORY_ORDER.forEach((c) => catMap.set(c, 0));
+    for (const exp of combinedExpenses) {
+        catMap.set(exp.category, (catMap.get(exp.category) || 0) + exp.krwAmount);
+    }
+    const expenseCategorySummary: ExpenseCategorySummaryItem[] = CATEGORY_ORDER.map((category) => {
+        const krwAmount = Math.round(catMap.get(category) || 0);
+        const percent = totalExpenseKrw > 0 ? (krwAmount / totalExpenseKrw) * 100 : 0;
+        return { category, krwAmount, percent };
+    }).filter((c) => c.krwAmount > 0);
+
     const totals = {
         itineraries: daySheets.reduce((s, d) => s + d.totalCount, 0),
         meals: daySheets.reduce((s, d) => s + d.mealCount, 0),
@@ -201,6 +298,7 @@ export function buildTravelReportModel(params: {
         drivingKm: Math.round(daySheets.reduce((s, d) => s + d.drivingKm, 0) * 10) / 10,
         totalKm: Math.round(daySheets.reduce((s, d) => s + d.totalKm, 0) * 10) / 10,
         toll: daySheets.reduce((s, d) => s + d.toll, 0),
+        expenseKrw: totalExpenseKrw,
     };
 
     return {
@@ -215,6 +313,8 @@ export function buildTravelReportModel(params: {
         daySheets,
         unifiedRows,
         accommodations: sortedAccs,
+        combinedExpenses,
+        expenseCategorySummary,
         totals,
     };
 }

@@ -75,9 +75,15 @@ ${requestSection}
       "transportMode": "DRIVING | WALKING | BICYCLING | TRANSIT | TRAIN | FLIGHT",
       "duration": "1시간 20분",
       "distance": "75km",
-      "costAmount": 3500,
-      "costCurrency": "KRW | JPY | USD | EUR | TWD | THB | VND",
-      "paidBy": "결제자 이름(선택)"
+      "costs": [
+        {
+          "id": "cost_1",
+          "title": "사용처/설명 (예: 입장료, 점심, 주차비)",
+          "amount": 3500,
+          "currency": "KRW | JPY | USD | EUR | TWD | THB | VND",
+          "paidBy": "결제자 이름(선택)"
+        }
+      ]
     }
   ],
   "checklists": [
@@ -108,7 +114,7 @@ ${requestSection}
 2. 모든 주소(\`address\`, \`arrivalAddress\`, 숙소 \`address\`)는 Google 지도 내비게이션과 날씨 API가 정확한 좌표를 찾을 수 있도록 정식 장소명·영문/현지 주소를 포함해 주세요.
 3. 위도(\`lat\`), 경도(\`lng\`)는 지도 마커 표시에 중요하므로 가능한 실제 좌표를 포함해 주세요.
 4. \`accommodations\`는 마지막 귀국일(\`N일차\`)을 제외한 \`1 ~ N-1일차\`에만 작성해 주세요.
-5. 각 일정의 예상 비용(\`costAmount\`, \`costCurrency\`, \`paidBy\`)을 넣으면 J-Plan 경비 · 정산 트래커에 자동 연동됩니다. (별도 숙박비·항공권 등 공통 비용은 \`expenses\`에 추가)
+5. 각 일정에 여러 건의 비용이 발생할 경우 \`costs\` 배열(1:N, 사용처 \`title\`, \`amount\`, \`currency\`, \`paidBy\`)로 나누어 넣어 주세요. J-Plan 경비 · 정산 트래커와 Excel에 자동 연동됩니다. (별도 숙박비·항공권 등 공통 비용은 \`expenses\`에 추가)
 6. 생성된 JSON 코드 블록을 사용자가 복사하여 J-Plan의 [일정 가져오기 / JSON 편집] 창에 바로 붙여넣을 수 있도록 불필요한 설명은 최소화해 주세요.`;
 }
 
@@ -171,9 +177,22 @@ export function generateAiSkillMarkdown(): string {
       "transportMode": "DRIVING | WALKING | BICYCLING | TRANSIT | TRAIN | FLIGHT",
       "duration": "1시간 30분",
       "distance": "18.4km",
-      "costAmount": 3500,
-      "costCurrency": "JPY",
-      "paidBy": "동행자1"
+      "costs": [
+        {
+          "id": "cost_1",
+          "title": "입장료",
+          "amount": 1500,
+          "currency": "JPY",
+          "paidBy": "동행자1"
+        },
+        {
+          "id": "cost_2",
+          "title": "주차비",
+          "amount": 500,
+          "currency": "JPY",
+          "paidBy": "동행자1"
+        }
+      ]
     }
   ],
   "checklists": [
@@ -205,7 +224,7 @@ export function generateAiSkillMarkdown(): string {
 3. \`type\`이 \`"이동"\`일 때는 \`address\`(출발지), \`arrivalAddress\`(도착지), \`transportMode\`, \`duration\`, \`distance\`를 반드시 채우세요.
 4. 주소는 Google 지도 내비게이션, 숙소 기준 날씨 조회, Excel 내보내기에서 바로 검색 가능하도록 정식 명칭 + 주소를 함께 적으세요.
 5. 마지막 날(귀국일 \`N일차\`)을 제외한 각 숙박 일차(\`dayIndex: 1 .. N-1\`)에만 \`accommodations\` 항목을 작성하세요.
-6. 일정별 예상 지출(\`costAmount\`, \`costCurrency\`, \`paidBy\`)을 입력하면 경비 트래커에 자동 연동됩니다. 지원 통화는 \`KRW\`, \`JPY\`, \`USD\`, \`EUR\`, \`TWD\`, \`THB\`, \`VND\`입니다.
+6. 일정별 예상 지출은 1:N \`costs\` 배열(\`title\`, \`amount\`, \`currency\`, \`paidBy\`)로 여러 항목을 나누어 입력하면 경비 트래커와 Excel에 자동 연동됩니다. 지원 통화는 \`KRW\`, \`JPY\`, \`USD\`, \`EUR\`, \`TWD\`, \`THB\`, \`VND\`입니다.
 7. \`checklists\`와 \`expenses\`는 선택 사항이지만, 여행 성격에 맞는 필수 준비물과 큰 공통 경비(항공·숙박·렌터카)를 함께 생성해 주면 바로 활용하기 좋습니다.
 `;
 }

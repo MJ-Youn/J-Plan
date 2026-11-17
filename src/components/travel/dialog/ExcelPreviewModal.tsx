@@ -1,9 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Download, ExternalLink, FileSpreadsheet, Search, SlidersHorizontal, Loader2 } from 'lucide-react';
-import type { Accommodation, Itinerary, ItineraryType, Travel } from '../../../types/travel';
+import type { Accommodation, ExpenseCurrency, Itinerary, ItineraryType, Travel } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import { useTravelStore } from '../../../store/travelStore';
+import { DEFAULT_RATES_TO_KRW, fetchRatesToKrw } from '../../../utils/expenseService';
 import { buildTravelReportModel, type ReportRowItem } from '../../../utils/excel/excelDataBuilder';
 import { exportTravelToExcel } from '../../../utils/excel/travelExcelExporter';
+import ExpenseCharts from './ExpenseCharts';
 
 interface ExcelPreviewModalProps {
     isOpen: boolean;
@@ -47,12 +50,25 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
     accommodations,
     onOpenExportOptions,
 }) => {
+    const { expenses } = useTravelStore();
+    const [rates, setRates] = useState<Record<ExpenseCurrency, number>>(DEFAULT_RATES_TO_KRW);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchRatesToKrw().then((res) => {
+            if (!cancelled) setRates(res.rates);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const model = useMemo(
-        () => buildTravelReportModel({ travel, itineraries, accommodations }),
-        [travel, itineraries, accommodations],
+        () => buildTravelReportModel({ travel, itineraries, accommodations, expenses, rates }),
+        [travel, itineraries, accommodations, expenses, rates],
     );
 
-    // 'summary' | 'day-1' ... | 'unified'
+    // 'summary' | 'day-1' ... | 'unified' | 'expenses'
     const [activeSheet, setActiveSheet] = useState<string>('summary');
     const [typeFilter, setTypeFilter] = useState<ItineraryType | 'ALL'>('ALL');
     const [searchQuery, setSearchQuery] = useState('');
@@ -65,6 +81,8 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                 travel,
                 itineraries,
                 accommodations,
+                expenses,
+                rates,
             });
         } finally {
             setIsDownloading(false);
@@ -91,6 +109,7 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
 
     const renderScheduleTable = (rows: ReportRowItem[], showDayCol: boolean, footerLabel: string, drivingKm?: number) => {
         const totalKm = Math.round(rows.reduce((s, r) => s + r.distanceKm, 0) * 10) / 10;
+        const totalCostKrw = Math.round(rows.reduce((s, r) => s + r.costKrw, 0));
 
         return (
             <div className="overflow-x-auto border border-slate-300 dark:border-zinc-700 rounded-lg shadow-sm">
@@ -109,13 +128,14 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                             <th className="p-2.5 border border-[#4A77A8] min-w-[190px]">도착지 (Google 지도)</th>
                             <th className="p-2.5 border border-[#4A77A8] w-32 whitespace-nowrap">이동수단</th>
                             <th className="p-2.5 border border-[#4A77A8] w-20 whitespace-nowrap">거리(km)</th>
+                            <th className="p-2.5 border border-[#4A77A8] w-28 whitespace-nowrap">경비</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={showDayCol ? 12 : 11}
+                                    colSpan={showDayCol ? 13 : 12}
                                     className="p-8 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-zinc-900"
                                 >
                                     표시할 일정이 없습니다.
@@ -153,6 +173,9 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                     <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center font-medium">
                                         {row.distanceKm.toFixed(1)}
                                     </td>
+                                    <td className="p-2 border border-slate-200 dark:border-zinc-700 text-right whitespace-pre-wrap font-medium text-emerald-700 dark:text-emerald-400">
+                                        {row.costText}
+                                    </td>
                                 </tr>
                             ))
                         )}
@@ -170,6 +193,9 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                 <td colSpan={2} className="p-2.5 border border-slate-300 dark:border-zinc-700" />
                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-center">총 이동거리</td>
                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-center">{totalKm.toFixed(1)}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-right whitespace-nowrap">
+                                    {totalCostKrw > 0 ? `₩${totalCostKrw.toLocaleString()}` : '-'}
+                                </td>
                             </tr>
                         </tfoot>
                     )}
@@ -301,6 +327,7 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                                 <th className="p-2.5 border border-[#4A77A8]">관광</th>
                                                 <th className="p-2.5 border border-[#4A77A8]">차량 주행(km)</th>
                                                 <th className="p-2.5 border border-[#4A77A8]">예상 통행료({model.currencyUnit})</th>
+                                                <th className="p-2.5 border border-[#4A77A8]">일차별 경비(KRW)</th>
                                                 <th className="p-2.5 border border-[#4A77A8]">숙박지</th>
                                             </tr>
                                         </thead>
@@ -323,6 +350,9 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                                     <td className="p-2.5 border border-slate-200 dark:border-zinc-700 text-center">{d.tourCount}</td>
                                                     <td className="p-2.5 border border-slate-200 dark:border-zinc-700 text-right font-medium">{d.drivingKm.toFixed(1)}</td>
                                                     <td className="p-2.5 border border-slate-200 dark:border-zinc-700 text-right">{d.toll.toLocaleString()}</td>
+                                                    <td className="p-2.5 border border-slate-200 dark:border-zinc-700 text-right font-medium text-emerald-700 dark:text-emerald-400">
+                                                        {d.expenseKrw > 0 ? `₩${d.expenseKrw.toLocaleString()}` : '-'}
+                                                    </td>
                                                     <td className="p-2.5 border border-slate-200 dark:border-zinc-700">{d.accLabel}</td>
                                                 </tr>
                                             ))}
@@ -337,6 +367,9 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-center">{model.totals.tours}</td>
                                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-right">{model.totals.drivingKm.toFixed(1)}</td>
                                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-right">{model.totals.toll.toLocaleString()}</td>
+                                                <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-right text-emerald-700 dark:text-emerald-400">
+                                                    {model.totals.expenseKrw > 0 ? `₩${model.totals.expenseKrw.toLocaleString()}` : '-'}
+                                                </td>
                                                 <td className="p-2.5 border border-slate-300 dark:border-zinc-700" />
                                             </tr>
                                         </tfoot>
@@ -422,6 +455,29 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                                     </div>
                                 </div>
                             </div>
+
+                            {/* 섹션 3: 경비 요약 및 지출 분석 그래프 */}
+                            {model.combinedExpenses.length > 0 && (
+                                <div className="space-y-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <h4 className="text-sm font-bold text-[#1E3A5F] dark:text-sky-300">
+                                            3. 경비 요약 및 지출 분석 그래프 (총 ₩{model.totals.expenseKrw.toLocaleString()})
+                                        </h4>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveSheet('expenses')}
+                                            className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+                                        >
+                                            경비 상세 내역 보기 →
+                                        </button>
+                                    </div>
+                                    <ExpenseCharts
+                                        expenses={model.combinedExpenses}
+                                        totalDays={model.totalDays}
+                                        rates={rates}
+                                    />
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -485,6 +541,108 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                             {renderScheduleTable(filteredUnifiedRows, true, '전체 합계')}
                         </div>
                     )}
+
+                    {activeSheet === 'expenses' && (
+                        <div className="space-y-5">
+                            <div className="rounded-xl overflow-hidden border border-slate-300 dark:border-zinc-700 shadow-sm bg-white dark:bg-zinc-900">
+                                <div className="bg-[#1E3A5F] text-white px-5 py-3 text-sm sm:text-base font-bold flex items-center justify-between gap-2 flex-wrap">
+                                    <span>{model.travel.name} — 경비 · 지출 분석 리포트</span>
+                                    <span className="text-xs sm:text-sm font-extrabold text-amber-300">
+                                        총 지출 ₩{model.totals.expenseKrw.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <ExpenseCharts
+                                expenses={model.combinedExpenses}
+                                totalDays={model.totalDays}
+                                rates={rates}
+                            />
+
+                            <div className="space-y-2">
+                                <h4 className="text-sm font-bold text-[#1E3A5F] dark:text-sky-300">
+                                    전체 지출 상세 내역 ({model.combinedExpenses.length}건)
+                                </h4>
+                                <div className="overflow-x-auto border border-slate-300 dark:border-zinc-700 rounded-lg shadow-sm">
+                                    <table className="w-full border-collapse text-xs">
+                                        <thead>
+                                            <tr className="bg-[#2E5B88] text-white font-bold text-center">
+                                                <th className="p-2.5 border border-[#4A77A8] w-16">일차</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-28">구분</th>
+                                                <th className="p-2.5 border border-[#4A77A8] min-w-[200px]">지출 내역</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-28">원본 금액</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-20">통화</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-32">원화 환산 (KRW)</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-24">결제자</th>
+                                                <th className="p-2.5 border border-[#4A77A8] w-24">출처</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {model.combinedExpenses.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="p-8 text-center text-gray-500 bg-white dark:bg-zinc-900">
+                                                        등록된 경비 내역이 없습니다.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                model.combinedExpenses.map((exp, idx) => (
+                                                    <tr
+                                                        key={`${exp.source}-${exp.id}-${idx}`}
+                                                        className={idx % 2 === 0 ? 'bg-white dark:bg-zinc-900' : 'bg-slate-50 dark:bg-zinc-800/50'}
+                                                    >
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center font-bold text-[#1E3A5F] dark:text-sky-300">
+                                                            {exp.dayIndex}일차
+                                                        </td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center">{exp.category}</td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 font-bold text-slate-900 dark:text-gray-100">
+                                                            {exp.title}
+                                                        </td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-right">
+                                                            {exp.amount.toLocaleString()}
+                                                        </td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center">{exp.currency}</td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-right font-bold text-emerald-700 dark:text-emerald-400">
+                                                            ₩{Math.round(exp.krwAmount).toLocaleString()}
+                                                        </td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center">
+                                                            {exp.paidBy || '-'}
+                                                        </td>
+                                                        <td className="p-2 border border-slate-200 dark:border-zinc-700 text-center">
+                                                            <span
+                                                                className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                                                    exp.source === 'itinerary'
+                                                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                                                        : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-gray-300'
+                                                                }`}
+                                                            >
+                                                                {exp.source === 'itinerary' ? '일정 연동' : '직접 입력'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                        {model.combinedExpenses.length > 0 && (
+                                            <tfoot>
+                                                <tr className="bg-slate-200 dark:bg-zinc-800 font-bold text-[#1E3A5F] dark:text-sky-300">
+                                                    <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-center">합계</td>
+                                                    <td className="p-2.5 border border-slate-300 dark:border-zinc-700" />
+                                                    <td className="p-2.5 border border-slate-300 dark:border-zinc-700">
+                                                        총 {model.combinedExpenses.length}건
+                                                    </td>
+                                                    <td colSpan={2} className="p-2.5 border border-slate-300 dark:border-zinc-700" />
+                                                    <td className="p-2.5 border border-slate-300 dark:border-zinc-700 text-right text-emerald-700 dark:text-emerald-400">
+                                                        ₩{model.totals.expenseKrw.toLocaleString()}
+                                                    </td>
+                                                    <td colSpan={2} className="p-2.5 border border-slate-300 dark:border-zinc-700" />
+                                                </tr>
+                                            </tfoot>
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* 하단 Excel 시트 탭 바 */}
@@ -527,6 +685,17 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
                         }`}
                     >
                         전체일정_통합
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveSheet('expenses')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                            activeSheet === 'expenses'
+                                ? 'bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-300 shadow-sm border border-gray-200 dark:border-zinc-700'
+                                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-zinc-800/60'
+                        }`}
+                    >
+                        경비_지출분석 ({model.combinedExpenses.length})
                     </button>
                 </div>
             </div>

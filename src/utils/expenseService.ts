@@ -1,4 +1,61 @@
-import type { ExpenseCurrency, ExpenseItem } from '../types/travel';
+import type { ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem } from '../types/travel';
+
+/**
+ * 일정의 1:N 경비 목록을 반환합니다. (구버전 1:1 필드 자동 호환)
+ */
+export function getItineraryCosts(iti: Pick<Itinerary, 'id' | 'content' | 'costs' | 'costAmount' | 'costCurrency' | 'paidBy'>): ItineraryCostItem[] {
+    if (Array.isArray(iti.costs) && iti.costs.length > 0) {
+        return iti.costs.filter((c) => typeof c.amount === 'number' && c.amount > 0);
+    }
+    if (typeof iti.costAmount === 'number' && iti.costAmount > 0) {
+        return [
+            {
+                id: `${iti.id}_legacy_cost`,
+                title: iti.content || '경비',
+                amount: iti.costAmount,
+                currency: iti.costCurrency || 'KRW',
+                paidBy: iti.paidBy,
+            },
+        ];
+    }
+    return [];
+}
+
+/**
+ * 일정 카드용 한 줄 경비 요약 문자열을 반환합니다.
+ */
+export function formatItineraryCostBadge(costs: ItineraryCostItem[]): string | null {
+    if (costs.length === 0) return null;
+    if (costs.length === 1) {
+        const c = costs[0];
+        return `${c.amount.toLocaleString()} ${c.currency}`;
+    }
+    const currencies = Array.from(new Set(costs.map((c) => c.currency)));
+    if (currencies.length === 1) {
+        const sum = costs.reduce((s, c) => s + c.amount, 0);
+        return `${sum.toLocaleString()} ${currencies[0]} (${costs.length}건)`;
+    }
+    const first = costs[0];
+    return `${first.amount.toLocaleString()} ${first.currency} 외 ${costs.length - 1}건`;
+}
+
+/**
+ * Excel 셀 및 표에서 사용할 멀티라인 경비 문자열을 반환합니다.
+ */
+export function formatItineraryCostsMultiline(costs: ItineraryCostItem[]): string {
+    if (costs.length === 0) return '-';
+    if (costs.length === 1) {
+        const c = costs[0];
+        const titlePart = c.title?.trim() ? `${c.title.trim()}: ` : '';
+        return `${titlePart}${c.amount.toLocaleString()} ${c.currency}`;
+    }
+    return costs
+        .map((c) => {
+            const label = c.title?.trim() || '기타';
+            return `• ${label}: ${c.amount.toLocaleString()} ${c.currency}`;
+        })
+        .join('\n');
+}
 
 /**
  * 1 외화 단위당 원화(KRW) 환율 맵 (오프라인/API 실패 시 기본 폴백값)

@@ -1,7 +1,9 @@
 import { differenceInDays, parseISO } from 'date-fns';
 import type { Cell, Workbook, Worksheet } from 'exceljs';
-import type { Accommodation, Itinerary, Travel, TravelExportMeta } from '../../types/travel';
-import { generateDistanceChartPng, type DayDistanceChartItem } from './chartImageGenerator';
+import type { Accommodation, ExpenseCurrency, ExpenseItem, Itinerary, Travel, TravelExportMeta } from '../../types/travel';
+import { convertToKrw, DEFAULT_RATES_TO_KRW, formatItineraryCostsMultiline, getItineraryCosts } from '../expenseService';
+import { generateDistanceChartPng, generateExpenseChartPng, type DayDistanceChartItem } from './chartImageGenerator';
+import { buildTravelReportModel } from './excelDataBuilder';
 import {
     buildGoogleMapsSearchUrl,
     estimateRowHeight,
@@ -31,6 +33,8 @@ export interface ExcelExportOptions {
     travel: Travel;
     itineraries: Itinerary[];
     accommodations: Accommodation[];
+    expenses?: ExpenseItem[];
+    rates?: Record<ExpenseCurrency, number>;
     meta?: TravelExportMeta;
     includeUnifiedSheet?: boolean;
     includeChartImage?: boolean;
@@ -75,6 +79,8 @@ export async function exportTravelToExcel(options: ExcelExportOptions): Promise<
         travel,
         itineraries,
         accommodations,
+        expenses = [],
+        rates,
         meta = travel.exportMeta || {},
         includeUnifiedSheet = true,
         includeChartImage = true,
@@ -108,6 +114,7 @@ export async function exportTravelToExcel(options: ExcelExportOptions): Promise<
             itineraries,
             accommodations,
             meta,
+            rates,
         });
         dayRowRanges.push(rangeInfo);
     }
@@ -135,6 +142,27 @@ export async function exportTravelToExcel(options: ExcelExportOptions): Promise<
             travel,
             totalDays,
             itineraries,
+            rates,
+        });
+    }
+
+    // 5. 경비_지출분석 시트 구성 (경비가 있는 경우)
+    const expenseReport = buildTravelReportModel({
+        travel,
+        itineraries,
+        accommodations,
+        expenses,
+        rates,
+        meta,
+    });
+    if (expenseReport.combinedExpenses.length > 0) {
+        const expenseSheet = workbook.addWorksheet('경비_지출분석');
+        await buildExpenseAnalysisSheet({
+            workbook,
+            sheet: expenseSheet,
+            travel,
+            report: expenseReport,
+            includeChartImage,
         });
     }
 
@@ -593,11 +621,12 @@ function buildDayDetailSheet(params: {
     itineraries: Itinerary[];
     accommodations: Accommodation[];
     meta: TravelExportMeta;
+    rates?: Record<ExpenseCurrency, number>;
 }): { startRow: number; endRow: number; drivingKm: number; totalKm: number } {
-    const { sheet, travel, dayIndex, totalDays, itineraries, accommodations, meta } = params;
+    const { sheet, travel, dayIndex, totalDays, itineraries, accommodations, meta, rates = DEFAULT_RATES_TO_KRW } = params;
 
-    const maxCol = 11;
-    const lastColLetter = 'K';
+    const maxCol = 12;
+    const lastColLetter = 'L';
 
     const colWidths = [
         6, // A: 순번
@@ -611,6 +640,7 @@ function buildDayDetailSheet(params: {
         32, // I: 도착지 주소 (Google 지도 검색)
         18, // J: 이동수단
         11, // K: 거리(km)
+        24, // L: 경비
     ];
     sheet.columns = colWidths.map((w) => ({ width: w }));
 
@@ -654,6 +684,7 @@ function buildDayDetailSheet(params: {
         '도착지 주소 (Google 지도)',
         '이동수단',
         '거리(km)',
+        '경비',
     ];
     const headerRow = sheet.getRow(4);
     headerRow.height = 28;
@@ -670,6 +701,7 @@ function buildDayDetailSheet(params: {
     const startRow = 5;
     let totalKm = 0;
     let drivingKm = 0;
+    let totalCostKrw = 0;
 
     if (dayItis.length === 0) {
         const row = sheet.getRow(startRow);
@@ -742,6 +774,14 @@ function buildDayDetailSheet(params: {
         row.getCell(11).alignment = { horizontal: 'center', vertical: 'middle' };
         row.getCell(11).numFmt = '#,##0.0';
 
+        const itiCosts = getItineraryCosts(iti);
+        const costText = formatItineraryCostsMultiline(itiCosts);
+        itiCosts.forEach((c) => {
+            totalCostKrw += convertToKrw(c.amount, c.currency, rates);
+        });
+        row.getCell(12).value = costText;
+        row.getCell(12).alignment = { horizontal: itiCosts.length > 1 ? 'left' : 'right', vertical: 'middle', wrapText: true };
+
         for (let col = 1; col <= maxCol; col++) {
             const cell = row.getCell(col);
             cell.border = THIN_BORDER;
@@ -767,6 +807,7 @@ function buildDayDetailSheet(params: {
                 { text: descText, colWidth: 52 },
                 { text: originAddrText, colWidth: 32 },
                 { text: destAddrText, colWidth: 32 },
+                { text: costText, colWidth: 24 },
             ],
             34,
         );
@@ -800,6 +841,9 @@ function buildDayDetailSheet(params: {
     totalRow.getCell(11).alignment = { horizontal: 'center', vertical: 'middle' };
     totalRow.getCell(11).numFmt = '#,##0.0';
 
+    totalRow.getCell(12).value = totalCostKrw > 0 ? `₩${Math.round(totalCostKrw).toLocaleString()}` : '-';
+    totalRow.getCell(12).alignment = { horizontal: 'right', vertical: 'middle' };
+
     for (let col = 1; col <= maxCol; col++) {
         const cell = totalRow.getCell(col);
         cell.fill = makeFill(EXCEL_COLORS.totalRowBg);
@@ -830,11 +874,12 @@ function buildUnifiedSheet(params: {
     travel: Travel;
     totalDays: number;
     itineraries: Itinerary[];
+    rates?: Record<ExpenseCurrency, number>;
 }): void {
-    const { sheet, travel, totalDays, itineraries } = params;
+    const { sheet, travel, totalDays, itineraries, rates = DEFAULT_RATES_TO_KRW } = params;
 
-    const maxCol = 12;
-    const lastColLetter = 'L';
+    const maxCol = 13;
+    const lastColLetter = 'M';
 
     const colWidths = [
         15, // A: 일차
@@ -849,6 +894,7 @@ function buildUnifiedSheet(params: {
         32, // J: 도착지 주소
         18, // K: 이동수단
         11, // L: 거리(km)
+        24, // M: 경비
     ];
     sheet.columns = colWidths.map((w) => ({ width: w }));
 
@@ -875,6 +921,7 @@ function buildUnifiedSheet(params: {
         '도착지 주소 (Google 지도)',
         '이동수단',
         '거리(km)',
+        '경비',
     ];
     const headerRow = sheet.getRow(2);
     headerRow.height = 28;
@@ -900,6 +947,7 @@ function buildUnifiedSheet(params: {
 
     const startRow = 3;
     let totalKm = 0;
+    let totalCostKrw = 0;
 
     allNormalized.forEach((iti, idx) => {
         const r = startRow + idx;
@@ -952,6 +1000,14 @@ function buildUnifiedSheet(params: {
         row.getCell(12).alignment = { horizontal: 'center', vertical: 'middle' };
         row.getCell(12).numFmt = '#,##0.0';
 
+        const itiCosts = getItineraryCosts(iti);
+        const costText = formatItineraryCostsMultiline(itiCosts);
+        itiCosts.forEach((c) => {
+            totalCostKrw += convertToKrw(c.amount, c.currency, rates);
+        });
+        row.getCell(13).value = costText;
+        row.getCell(13).alignment = { horizontal: itiCosts.length > 1 ? 'left' : 'right', vertical: 'middle', wrapText: true };
+
         for (let col = 1; col <= maxCol; col++) {
             const cell = row.getCell(col);
             cell.border = THIN_BORDER;
@@ -977,6 +1033,7 @@ function buildUnifiedSheet(params: {
                 { text: descText, colWidth: 52 },
                 { text: originAddrText, colWidth: 32 },
                 { text: destAddrText, colWidth: 32 },
+                { text: costText, colWidth: 24 },
             ],
             34,
         );
@@ -1001,6 +1058,9 @@ function buildUnifiedSheet(params: {
         totalRow.getCell(12).alignment = { horizontal: 'center', vertical: 'middle' };
         totalRow.getCell(12).numFmt = '#,##0.0';
 
+        totalRow.getCell(13).value = totalCostKrw > 0 ? `₩${Math.round(totalCostKrw).toLocaleString()}` : '-';
+        totalRow.getCell(13).alignment = { horizontal: 'right', vertical: 'middle' };
+
         for (let col = 1; col <= maxCol; col++) {
             const cell = totalRow.getCell(col);
             cell.fill = makeFill(EXCEL_COLORS.totalRowBg);
@@ -1019,5 +1079,215 @@ function buildUnifiedSheet(params: {
         title: `${travel.name} — 전체 일정 통합표`,
         printTitlesRow: '1:2',
         freezeRow: 2,
+    });
+}
+
+/**
+ * 시트 4: 경비_지출분석 시트를 생성합니다.
+ * 카테고리별 지출 요약 + 상세 내역표(SUM 수식) + 도넛/막대 그래프 이미지를 포함합니다.
+ */
+async function buildExpenseAnalysisSheet(params: {
+    workbook: Workbook;
+    sheet: Worksheet;
+    travel: Travel;
+    report: ReturnType<typeof buildTravelReportModel>;
+    includeChartImage: boolean;
+}): Promise<void> {
+    const { workbook, sheet, travel, report, includeChartImage } = params;
+
+    sheet.columns = [
+        { width: 10 }, // A: 일차
+        { width: 16 }, // B: 구분
+        { width: 34 }, // C: 지출 내역
+        { width: 14 }, // D: 원본 금액
+        { width: 10 }, // E: 통화
+        { width: 18 }, // F: 원화 환산액(KRW)
+        { width: 14 }, // G: 결제자
+        { width: 14 }, // H: 출처
+    ];
+
+    // 1행: 배너
+    sheet.mergeCells('A1:H1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `${travel.name} — 경비 · 지출 분석 리포트`;
+    titleCell.font = makeFont({ size: 15, bold: true, color: EXCEL_COLORS.white });
+    titleCell.fill = makeFill(EXCEL_COLORS.navyBanner);
+    titleCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+    sheet.getRow(1).height = 34;
+
+    // 2행: 카테고리 요약 섹션 헤더
+    sheet.mergeCells('A2:H2');
+    const catHeader = sheet.getCell('A2');
+    catHeader.value = '1. 항목별 지출 요약 (KRW 환산 기준)';
+    catHeader.font = makeFont({ size: 11, bold: true, color: EXCEL_COLORS.navyBanner });
+    catHeader.alignment = { horizontal: 'left', vertical: 'middle' };
+    sheet.getRow(2).height = 24;
+
+    const catHeaders = ['구분', '원화 환산액 (KRW)', '비중 (%)'];
+    const catTableHeaderRow = sheet.getRow(3);
+    catTableHeaderRow.height = 24;
+    catHeaders.forEach((h, i) => {
+        const cell = catTableHeaderRow.getCell(i + 1);
+        cell.value = h;
+        cell.font = makeFont({ bold: true, color: EXCEL_COLORS.white });
+        cell.fill = makeFill(EXCEL_COLORS.blueHeader);
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = HEADER_BORDER;
+    });
+
+    let currentRow = 4;
+    report.expenseCategorySummary.forEach((cat, idx) => {
+        const row = sheet.getRow(currentRow);
+        row.height = 22;
+        row.getCell(1).value = cat.category;
+        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        row.getCell(2).value = cat.krwAmount;
+        row.getCell(2).numFmt = '#,##0';
+        row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+
+        row.getCell(3).value = Math.round(cat.percent * 10) / 1000;
+        row.getCell(3).numFmt = '0.0%';
+        row.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+
+        const bg = idx % 2 === 0 ? EXCEL_COLORS.white : EXCEL_COLORS.zebraEvenBg;
+        for (let c = 1; c <= 3; c++) {
+            const cell = row.getCell(c);
+            cell.fill = makeFill(bg);
+            cell.border = THIN_BORDER;
+            cell.font = makeFont({ bold: c === 1 });
+        }
+        currentRow++;
+    });
+
+    // 카테고리 합계 행
+    const catTotalRow = sheet.getRow(currentRow);
+    catTotalRow.height = 24;
+    catTotalRow.getCell(1).value = '총 지출 합계';
+    catTotalRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    catTotalRow.getCell(2).value = {
+        formula: report.expenseCategorySummary.length > 0 ? `SUM(B4:B${currentRow - 1})` : '0',
+        result: report.totals.expenseKrw,
+    };
+    catTotalRow.getCell(2).numFmt = '#,##0';
+    catTotalRow.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+    catTotalRow.getCell(3).value = 1;
+    catTotalRow.getCell(3).numFmt = '0.0%';
+    catTotalRow.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+    for (let c = 1; c <= 3; c++) {
+        const cell = catTotalRow.getCell(c);
+        cell.fill = makeFill(EXCEL_COLORS.totalRowBg);
+        cell.font = makeFont({ bold: true, color: EXCEL_COLORS.navyBanner });
+        cell.border = TOTAL_BORDER;
+    }
+
+    // 그래프 이미지 삽입 (카테고리 도넛 + 일차별 막대)
+    let chartBottomRow = currentRow + 1;
+    if (includeChartImage) {
+        const chartPng = await generateExpenseChartPng({
+            categories: report.expenseCategorySummary,
+            dailyTotals: report.daySheets.map((d) => ({ label: `${d.dayIndex}일차`, krwAmount: d.expenseKrw })),
+            totalKrw: report.totals.expenseKrw,
+        });
+        if (chartPng) {
+            const imgId = workbook.addImage({
+                buffer: chartPng as unknown as ArrayBuffer,
+                extension: 'png',
+            });
+            sheet.addImage(imgId, {
+                tl: { col: 3.2, row: 2.2 },
+                ext: { width: 520, height: 192 },
+            });
+            chartBottomRow = Math.max(chartBottomRow, 13);
+        }
+    }
+
+    // 2. 전체 지출 상세 내역표
+    const listTitleRowNum = chartBottomRow + 1;
+    sheet.mergeCells(`A${listTitleRowNum}:H${listTitleRowNum}`);
+    const listTitle = sheet.getCell(`A${listTitleRowNum}`);
+    listTitle.value = '2. 전체 지출 상세 내역 (일정 연동 + 직접 입력)';
+    listTitle.font = makeFont({ size: 11, bold: true, color: EXCEL_COLORS.navyBanner });
+    listTitle.alignment = { horizontal: 'left', vertical: 'middle' };
+    sheet.getRow(listTitleRowNum).height = 24;
+
+    const listHeaderRowNum = listTitleRowNum + 1;
+    const listHeaders = ['일차', '구분', '지출 내역', '금액', '통화', '원화 환산액 (KRW)', '결제자', '출처'];
+    const listHeaderRow = sheet.getRow(listHeaderRowNum);
+    listHeaderRow.height = 25;
+    listHeaders.forEach((h, i) => {
+        const cell = listHeaderRow.getCell(i + 1);
+        cell.value = h;
+        cell.font = makeFont({ bold: true, color: EXCEL_COLORS.white });
+        cell.fill = makeFill(EXCEL_COLORS.blueHeader);
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = HEADER_BORDER;
+    });
+
+    const dataStartRow = listHeaderRowNum + 1;
+    report.combinedExpenses.forEach((exp, idx) => {
+        const r = sheet.getRow(dataStartRow + idx);
+        r.height = 22;
+        r.getCell(1).value = `${exp.dayIndex}일차`;
+        r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        r.getCell(2).value = exp.category;
+        r.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        r.getCell(3).value = exp.title;
+        r.getCell(3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+
+        r.getCell(4).value = exp.amount;
+        r.getCell(4).numFmt = '#,##0.##';
+        r.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' };
+
+        r.getCell(5).value = exp.currency;
+        r.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        r.getCell(6).value = Math.round(exp.krwAmount);
+        r.getCell(6).numFmt = '#,##0';
+        r.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+
+        r.getCell(7).value = exp.paidBy || '-';
+        r.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        r.getCell(8).value = exp.source === 'itinerary' ? '일정 연동' : '직접 입력';
+        r.getCell(8).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        const bg = idx % 2 === 0 ? EXCEL_COLORS.white : EXCEL_COLORS.zebraEvenBg;
+        for (let c = 1; c <= 8; c++) {
+            const cell = r.getCell(c);
+            cell.fill = makeFill(bg);
+            cell.border = THIN_BORDER;
+            cell.font = makeFont({ bold: c === 3 || c === 6 });
+        }
+    });
+
+    if (report.combinedExpenses.length > 0) {
+        const dataEndRow = dataStartRow + report.combinedExpenses.length - 1;
+        const totalRow = sheet.getRow(dataEndRow + 1);
+        totalRow.height = 26;
+        totalRow.getCell(1).value = '합계';
+        totalRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+        totalRow.getCell(3).value = `총 ${report.combinedExpenses.length}건`;
+        totalRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+        totalRow.getCell(6).value = {
+            formula: `SUM(F${dataStartRow}:F${dataEndRow})`,
+            result: report.totals.expenseKrw,
+        };
+        totalRow.getCell(6).numFmt = '#,##0';
+        totalRow.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+        for (let c = 1; c <= 8; c++) {
+            const cell = totalRow.getCell(c);
+            cell.fill = makeFill(EXCEL_COLORS.totalRowBg);
+            cell.font = makeFont({ bold: true, color: EXCEL_COLORS.navyBanner });
+            cell.border = TOTAL_BORDER;
+        }
+    }
+
+    applyPrintOptimizedPageSetup(sheet, {
+        title: `${travel.name} — 경비 · 지출 분석`,
+        printTitlesRow: '1:1',
+        freezeRow: 1,
     });
 }

@@ -4,6 +4,8 @@ import { differenceInDays, parseISO } from 'date-fns';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { Accommodation, Itinerary, Travel, TravelExportMeta } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import { useTravelStore } from '../../../store/travelStore';
+import { fetchRatesToKrw } from '../../../utils/expenseService';
 import { getDayDateInfo, summarizeDayTheme } from '../../../utils/excel/excelHelpers';
 import { exportTravelToExcel } from '../../../utils/excel/travelExcelExporter';
 
@@ -38,6 +40,7 @@ const ExcelExportModalContent: React.FC<ExcelExportModalProps> = ({
     onSaveExportMeta,
 }) => {
     const geocodingLib = useMapsLibrary('geocoding');
+    const { expenses } = useTravelStore();
     const totalDays = Math.max(1, differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1);
     const saved = travel.exportMeta || {};
 
@@ -160,10 +163,14 @@ const ExcelExportModalContent: React.FC<ExcelExportModalProps> = ({
                 await onSaveExportMeta(metaPayload);
             }
 
+            const rateRes = await fetchRatesToKrw();
+
             await exportTravelToExcel({
                 travel,
                 itineraries: finalItineraries,
                 accommodations: finalAccommodations,
+                expenses,
+                rates: rateRes.rates,
                 meta: metaPayload,
                 includeUnifiedSheet,
                 includeChartImage,

@@ -222,6 +222,17 @@ export const formatDuration = (durationStr?: string): string => {
 };
 
 /**
+ * 개별 일정 내 1:N 경비 항목 인터페이스
+ */
+export interface ItineraryCostItem {
+  id: string;
+  title: string; // 사용처 / 설명 (예: 입장료, 점심, 주차비)
+  amount: number;
+  currency: ExpenseCurrency;
+  paidBy?: string; // 결제자 이름
+}
+
+/**
  * 개별 일정 상세 정보 인터페이스
  *
  * @author 윤명준 (MJ Yun)
@@ -245,7 +256,11 @@ export interface Itinerary {
   transportMode?: TransportMode;
   duration?: string;
   distance?: string;
-  costAmount?: number; // 일정 예상/실제 비용
-  costCurrency?: ExpenseCurrency; // 비용 통화 (KRW, JPY 등)
-  paidBy?: string; // 결제자 이름
+  costs?: ItineraryCostItem[]; // 1:N 일정 경비 목록
+  /** @deprecated 1:N `costs` 배열 사용 권장 (구버전 호환용) */
+  costAmount?: number;
+  /** @deprecated 1:N `costs` 배열 사용 권장 (구버전 호환용) */
+  costCurrency?: ExpenseCurrency;
+  /** @deprecated 1:N `costs` 배열 사용 권장 (구버전 호환용) */
+  paidBy?: string;
 }

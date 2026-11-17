@@ -10,6 +10,7 @@ import {
     convertToKrw,
     DEFAULT_RATES_TO_KRW,
     fetchRatesToKrw,
+    getItineraryCosts,
 } from '../../../utils/expenseService';
 import ExpenseCharts from './ExpenseCharts';
 
@@ -69,8 +70,8 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         };
     }, []);
 
-    // 일정에 등록된 비용 + 별도 추가된 비용을 하나의 목록으로 통합
-    const combinedExpenses = useMemo<Array<ExpenseItem & { source: 'itinerary' | 'manual' }>>(() => {
+    // 일정에 등록된 비용(1:N) + 별도 추가된 비용을 하나의 목록으로 통합
+    const combinedExpenses = useMemo<Array<ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string }>>(() => {
         const mapItineraryCat = (type: string): ExpenseCategory => {
             if (type === '이동') return '교통·렌터카';
             if (type === '식사') return '식비';
@@ -79,17 +80,21 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         };
 
         const fromItineraries = itineraries
-            .filter((i) => i.travelId === travel.id && typeof i.costAmount === 'number' && i.costAmount > 0)
-            .map((i) => ({
-                id: i.id,
-                dayIndex: i.dayIndex,
-                category: mapItineraryCat(i.type),
-                title: i.content,
-                amount: i.costAmount!,
-                currency: i.costCurrency || ('KRW' as ExpenseCurrency),
-                paidBy: i.paidBy,
-                source: 'itinerary' as const,
-            }));
+            .filter((i) => i.travelId === travel.id)
+            .flatMap((i) =>
+                getItineraryCosts(i).map((c) => ({
+                    id: `${i.id}:${c.id}`,
+                    itineraryId: i.id,
+                    costId: c.id,
+                    dayIndex: i.dayIndex,
+                    category: mapItineraryCat(i.type),
+                    title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
+                    amount: c.amount,
+                    currency: c.currency,
+                    paidBy: c.paidBy,
+                    source: 'itinerary' as const,
+                })),
+            );
 
         const manual = expenses.map((e) => ({ ...e, source: 'manual' as const }));
         return [...fromItineraries, ...manual].sort((a, b) => a.dayIndex - b.dayIndex);
@@ -147,15 +152,23 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         setAmount('');
     };
 
-    const handleDeleteExpense = (id: string, source: 'itinerary' | 'manual') => {
+    const handleDeleteExpense = (exp: ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string }) => {
         if (!canEdit) return;
-        if (source === 'itinerary') {
-            if (!window.confirm('이 일정에 등록된 비용 정보를 제거하시겠습니까? (일정 자체는 유지됩니다)')) return;
-            updateItinerary(id, { costAmount: undefined, costCurrency: undefined, paidBy: undefined });
+        if (exp.source === 'itinerary' && exp.itineraryId) {
+            if (!window.confirm('이 일정에 등록된 해당 경비 항목을 제거하시겠습니까? (일정 자체는 유지됩니다)')) return;
+            const target = itineraries.find((i) => i.id === exp.itineraryId);
+            if (!target) return;
+            const remaining = getItineraryCosts(target).filter((c) => c.id !== exp.costId);
+            updateItinerary(target.id, {
+                costs: remaining.length > 0 ? remaining : undefined,
+                costAmount: undefined,
+                costCurrency: undefined,
+                paidBy: undefined,
+            });
         } else {
             setExpenses(
                 travel.id,
-                expenses.filter((x) => x.id !== id),
+                expenses.filter((x) => x.id !== exp.id),
             );
         }
     };
@@ -414,7 +427,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                                     {canEdit && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleDeleteExpense(exp.id, exp.source)}
+                                                            onClick={() => handleDeleteExpense(exp)}
                                                             className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                                                             title={exp.source === 'itinerary' ? '일정 비용 제거' : '삭제'}
                                                         >

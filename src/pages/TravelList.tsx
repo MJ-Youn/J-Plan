@@ -69,7 +69,8 @@ const TravelList: React.FC = () => {
     };
 
     return (
-        <div className="max-w-screen-2xl mx-auto w-full animate-fade-in-up pb-20">
+        <div className="h-full overflow-y-auto overscroll-contain">
+            <div className="max-w-screen-2xl mx-auto w-full animate-fade-in-up pb-20">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
                 <h2 className="text-3xl font-bold">내 여행 일정</h2>
                 <div className="flex items-center space-x-2 flex-wrap gap-y-2">
@@ -215,6 +216,7 @@ const TravelList: React.FC = () => {
                 isOpen={isAiSkillOpen}
                 onClose={() => setIsAiSkillOpen(false)}
             />
+            </div>
         </div>
     );
 };

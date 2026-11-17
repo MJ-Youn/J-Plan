@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus, Trash2 } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useDialog } from '../../../hooks/useDialog';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { calculateRouteInfo } from '../../../utils/routeCalculator';
-import type { TransportMode, Itinerary, ItineraryType, ExpenseCurrency } from '../../../types/travel';
+import { getItineraryCosts } from '../../../utils/expenseService';
+import type { TransportMode, Itinerary, ItineraryType, ExpenseCurrency, ItineraryCostItem } from '../../../types/travel';
 
 /**
  * 일정 추가 및 수정을 위한 모달 컴포넌트입니다.
@@ -51,9 +53,23 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
     const [transportMode, setTransportMode] = useState<TransportMode | ''>(initial?.transportMode || '');
     const [duration, setDuration] = useState(initial?.duration || '');
     const [distance, setDistance] = useState(initial?.distance || '');
-    const [costAmount, setCostAmount] = useState(initial?.costAmount !== undefined ? String(initial.costAmount) : '');
-    const [costCurrency, setCostCurrency] = useState<ExpenseCurrency>(initial?.costCurrency || 'KRW');
-    const [paidBy, setPaidBy] = useState(initial?.paidBy || '');
+    const [costs, setCosts] = useState<Array<{ id: string; title: string; amount: string; currency: ExpenseCurrency; paidBy: string }>>(() => {
+        if (!initial) return [];
+        return getItineraryCosts({
+            id: initial.id || 'draft',
+            content: initial.content || '',
+            costs: initial.costs,
+            costAmount: initial.costAmount,
+            costCurrency: initial.costCurrency,
+            paidBy: initial.paidBy,
+        }).map((c) => ({
+            id: c.id,
+            title: c.title,
+            amount: String(c.amount),
+            currency: c.currency,
+            paidBy: c.paidBy || '',
+        }));
+    });
     const [isCalculating, setIsCalculating] = useState(false);
 
     const routesLib = useMapsLibrary('routes');
@@ -109,8 +125,19 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
             return alert('이동일 경우 출발 위치와 도착 위치를 모두 입력해야 합니다.');
         }
 
-        const parsedCost = costAmount.trim() ? Number(costAmount.replace(/,/g, '').trim()) : undefined;
-        const validCost = parsedCost !== undefined && !Number.isNaN(parsedCost) && parsedCost > 0 ? parsedCost : undefined;
+        const validCosts: ItineraryCostItem[] = costs
+            .map((c) => {
+                const parsed = Number(c.amount.replace(/,/g, '').trim());
+                if (Number.isNaN(parsed) || parsed <= 0) return null;
+                return {
+                    id: c.id || uuidv4(),
+                    title: c.title.trim() || content.trim() || '경비',
+                    amount: parsed,
+                    currency: c.currency,
+                    ...(c.paidBy.trim() ? { paidBy: c.paidBy.trim() } : {}),
+                };
+            })
+            .filter((item): item is ItineraryCostItem => item !== null);
 
         if (editTarget) {
             updateItinerary(editTarget.id, {
@@ -125,9 +152,10 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                 transportMode: type === '이동' && transportMode ? (transportMode as TransportMode) : undefined,
                 duration: type === '이동' && transportMode ? duration : undefined,
                 distance: type === '이동' && transportMode ? distance : undefined,
-                costAmount: validCost,
-                costCurrency: validCost ? costCurrency : undefined,
-                paidBy: validCost && paidBy.trim() ? paidBy.trim() : undefined,
+                costs: validCosts.length > 0 ? validCosts : undefined,
+                costAmount: undefined,
+                costCurrency: undefined,
+                paidBy: undefined,
             });
             onClose();
         } else {
@@ -144,17 +172,14 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                 transportMode: type === '이동' && transportMode ? (transportMode as TransportMode) : undefined,
                 duration: type === '이동' && transportMode ? duration : undefined,
                 distance: type === '이동' && transportMode ? distance : undefined,
-                costAmount: validCost,
-                costCurrency: validCost ? costCurrency : undefined,
-                paidBy: validCost && paidBy.trim() ? paidBy.trim() : undefined,
+                costs: validCosts.length > 0 ? validCosts : undefined,
             });
             // 저장 후 계속 추가할 때 시간 외 모든 정보 초기화
             setContent('');
             setAddress('');
             setArrivalAddress('');
             setDescription('');
-            setCostAmount('');
-            setPaidBy('');
+            setCosts([]);
             setType('');
             if (!keepOpen) {
                 onClose();
@@ -371,50 +396,126 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                         )}
 
                         <div className="p-3 sm:p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/40 space-y-2.5">
-                            <label className="block text-xs font-bold text-emerald-800 dark:text-emerald-300">예상 / 실제 경비 (선택 · 경비 트래커 자동 연동)</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-12 gap-2.5">
-                                <input
-                                    type="number"
-                                    step="any"
-                                    value={costAmount}
-                                    onChange={(e) => setCostAmount(e.target.value)}
-                                    placeholder="금액 입력"
-                                    className="col-span-2 sm:col-span-5 p-2 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
-                                />
-                                <select
-                                    value={costCurrency}
-                                    onChange={(e) => setCostCurrency(e.target.value as ExpenseCurrency)}
-                                    className="col-span-1 sm:col-span-3 p-2 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="block text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                                    예상 / 실제 경비 ({costs.length}건 · 경비 트래커 자동 연동)
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setCosts((prev) => [
+                                            ...prev,
+                                            {
+                                                id: uuidv4(),
+                                                title: '',
+                                                amount: '',
+                                                currency: prev[prev.length - 1]?.currency || 'JPY',
+                                                paidBy: prev[prev.length - 1]?.paidBy || '',
+                                            },
+                                        ])
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shrink-0"
                                 >
-                                    {CURRENCIES.map((cur) => (
-                                        <option key={cur} value={cur}>
-                                            {cur}
-                                        </option>
-                                    ))}
-                                </select>
-                                {participants.length > 0 ? (
-                                    <select
-                                        value={paidBy}
-                                        onChange={(e) => setPaidBy(e.target.value)}
-                                        className="col-span-1 sm:col-span-4 p-2 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
-                                    >
-                                        <option value="">결제자 선택</option>
-                                        {participants.map((p) => (
-                                            <option key={p} value={p}>
-                                                {p}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={paidBy}
-                                        onChange={(e) => setPaidBy(e.target.value)}
-                                        placeholder="결제자"
-                                        className="col-span-1 sm:col-span-4 p-2 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
-                                    />
-                                )}
+                                    <Plus size={13} />
+                                    경비 추가
+                                </button>
                             </div>
+
+                            {costs.length === 0 ? (
+                                <p className="text-[11px] text-emerald-800/70 dark:text-emerald-300/70">
+                                    &lsquo;경비 추가&rsquo; 버튼을 눌러 입장료, 식사비, 주차비 등 여러 항목을 나누어 입력할 수 있습니다.
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {costs.map((costItem, idx) => (
+                                        <div
+                                            key={costItem.id}
+                                            className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center p-2 rounded-lg bg-white/80 dark:bg-gray-900/70 border border-emerald-100 dark:border-emerald-900/40"
+                                        >
+                                            <input
+                                                type="text"
+                                                value={costItem.title}
+                                                onChange={(e) =>
+                                                    setCosts((prev) =>
+                                                        prev.map((c, i) => (i === idx ? { ...c, title: e.target.value } : c)),
+                                                    )
+                                                }
+                                                placeholder="사용처/설명 (예: 입장료)"
+                                                className="col-span-2 sm:col-span-4 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                            />
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                value={costItem.amount}
+                                                onChange={(e) =>
+                                                    setCosts((prev) =>
+                                                        prev.map((c, i) => (i === idx ? { ...c, amount: e.target.value } : c)),
+                                                    )
+                                                }
+                                                placeholder="금액"
+                                                className="col-span-1 sm:col-span-3 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                            />
+                                            <select
+                                                value={costItem.currency}
+                                                onChange={(e) =>
+                                                    setCosts((prev) =>
+                                                        prev.map((c, i) =>
+                                                            i === idx ? { ...c, currency: e.target.value as ExpenseCurrency } : c,
+                                                        ),
+                                                    )
+                                                }
+                                                className="col-span-1 sm:col-span-2 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                            >
+                                                {CURRENCIES.map((cur) => (
+                                                    <option key={cur} value={cur}>
+                                                        {cur}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="col-span-2 sm:col-span-3 flex items-center gap-1.5">
+                                                {participants.length > 0 ? (
+                                                    <select
+                                                        value={costItem.paidBy}
+                                                        onChange={(e) =>
+                                                            setCosts((prev) =>
+                                                                prev.map((c, i) => (i === idx ? { ...c, paidBy: e.target.value } : c)),
+                                                            )
+                                                        }
+                                                        className="flex-1 min-w-0 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    >
+                                                        <option value="">결제자</option>
+                                                        {participants.map((p) => (
+                                                            <option key={p} value={p}>
+                                                                {p}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <input
+                                                        type="text"
+                                                        value={costItem.paidBy}
+                                                        onChange={(e) =>
+                                                            setCosts((prev) =>
+                                                                prev.map((c, i) => (i === idx ? { ...c, paidBy: e.target.value } : c)),
+                                                            )
+                                                        }
+                                                        placeholder="결제자"
+                                                        className="flex-1 min-w-0 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    />
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCosts((prev) => prev.filter((_, i) => i !== idx))}
+                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors shrink-0"
+                                                    title="경비 항목 삭제"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div>

@@ -4,6 +4,7 @@ import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
 import { getTransportInfo, getTypeEmoji } from '../../types/travel';
 import { buildNavigationLinks } from '../../utils/navigationLinks';
+import { formatItineraryCostBadge, getItineraryCosts } from '../../utils/expenseService';
 /**
  * 시간대별 일정을 표시하는 타임테이블 컴포넌트입니다.
  *
@@ -453,11 +454,15 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                 {getTypeEmoji(p.event.type, p.event.transportMode)} {p.event.type}
                             </span>
                             {colId === 'all' && maxCol > 0 && <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-zinc-700 px-1 rounded">{p.event.dayIndex}일차</span>}
-                            {typeof p.event.costAmount === 'number' && p.event.costAmount > 0 && (
-                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
-                                    💰 {p.event.costAmount.toLocaleString()} {p.event.costCurrency || 'KRW'}
-                                </span>
-                            )}
+                            {(() => {
+                                const costBadge = formatItineraryCostBadge(getItineraryCosts(p.event));
+                                if (!costBadge) return null;
+                                return (
+                                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                                        💰 {costBadge}
+                                    </span>
+                                );
+                            })()}
                         </div>
                         <div className={`${isMobile && isSelected ? 'flex' : 'hidden'} group-hover:flex space-x-1 shrink-0 bg-white/80 dark:bg-gray-800/80 rounded p-0.5`}>
                             {isMoveableBetween && (
