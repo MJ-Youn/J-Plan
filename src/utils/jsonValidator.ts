@@ -78,9 +78,15 @@ export function validateTravelJson(jsonInput: string | unknown): JsonValidationR
             region: typeof travelObj.region === 'string' ? travelObj.region : '',
             startDate: travelObj.startDate,
             endDate: travelObj.endDate,
+            ...(travelObj.exportMeta && typeof travelObj.exportMeta === 'object'
+                ? { exportMeta: travelObj.exportMeta as TravelExportData['travel']['exportMeta'] }
+                : {}),
         },
         itineraries: Array.isArray(obj.itineraries) ? (obj.itineraries as TravelExportData['itineraries']) : [],
         accommodations: Array.isArray(obj.accommodations) ? (obj.accommodations as TravelExportData['accommodations']) : [],
+        ...(Array.isArray(obj.checklists) ? { checklists: obj.checklists as TravelExportData['checklists'] } : {}),
+        ...(Array.isArray(obj.expenses) ? { expenses: obj.expenses as TravelExportData['expenses'] } : {}),
+        ...(Array.isArray(obj.participants) ? { participants: obj.participants as TravelExportData['participants'] } : {}),
     };
 
     return {

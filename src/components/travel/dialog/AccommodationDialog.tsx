@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -17,31 +17,29 @@ interface Props {
     travelId: string;
 }
 
-const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
+const AccommodationDialog: React.FC<Props> = (props) => {
+    if (!props.isOpen) {
+        return null;
+    }
+    return <AccommodationDialogContent {...props} />;
+};
+
+const AccommodationDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId }) => {
     const { travels, accommodations, setAccommodations } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
     const totalDays = travel ? differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1 : 1;
+    // 마지막 날(귀국/귀가일)은 숙박하지 않으므로 totalDays - 1 박까지만 숙소 입력 가능
+    const stayDays = Math.max(0, totalDays - 1);
 
-    const [accList, setAccList] = useState<Partial<Accommodation>[]>([]);
+    const [accList, setAccList] = useState<Partial<Accommodation>[]>(() => {
+        const existing = accommodations.filter((a) => a.travelId === travelId);
+        return Array.from({ length: stayDays }).map((_, i) => {
+            const dayIndex = i + 1;
+            const found = existing.find((a) => a.dayIndex === dayIndex);
+            return found ? { ...found } : { travelId, dayIndex, name: '', address: '', description: '', phone: '' };
+        });
+    });
     const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
-
-    useEffect(() => {
-        if (isOpen) {
-            // 이미 저장된 숙소 정보를 불러와 각 일차에 채워줌
-            const existing = accommodations.filter((a) => a.travelId === travelId);
-            const initial: Partial<Accommodation>[] = Array.from({ length: totalDays }).map((_, i) => {
-                const dayIndex = i + 1;
-                const found = existing.find((a) => a.dayIndex === dayIndex);
-                // 이미 저장된 정보가 있으면 해당 데이터로 채우고, 없으면 빈 값으로 초기화
-                return found ? { ...found } : { travelId, dayIndex, name: '', address: '', description: '', phone: '' };
-            });
-            setAccList(initial);
-        }
-    }, [isOpen, travelId, accommodations, totalDays]);
-
-    if (!isOpen) {
-        return null;
-    }
 
     const handleChange = (index: number, field: keyof Accommodation, value: string) => {
         const newList = [...accList];
@@ -87,8 +85,57 @@ const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => 
                     </button>
                 </div>
 
-                <div className="p-4 overflow-y-auto flex-1">
-                    <div className="w-full overflow-x-auto">
+                <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+                    {stayDays === 0 ? (
+                        <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                            당일치기 일정은 숙소 설정이 필요하지 않습니다.
+                        </div>
+                    ) : (
+                        <>
+                    {/* 모바일 카드 레이아웃 */}
+                    <div className="md:hidden space-y-3">
+                        {accList.map((acc, index) => (
+                            <div
+                                key={index}
+                                className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/40 space-y-2.5"
+                            >
+                                <div className="text-xs font-bold text-amber-600 dark:text-amber-500">{acc.dayIndex}일차 숙소</div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <input
+                                        type="text"
+                                        value={acc.name || ''}
+                                        onChange={(e) => handleChange(index, 'name', e.target.value)}
+                                        placeholder="숙소명 입력"
+                                        className="w-full p-2.5 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:border-amber-500 transition-colors"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={acc.phone || ''}
+                                        onChange={(e) => handleChange(index, 'phone', e.target.value)}
+                                        placeholder="연락처 입력 (선택)"
+                                        className="w-full p-2.5 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:border-amber-500 transition-colors"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={acc.address || ''}
+                                        onChange={(e) => handleChange(index, 'address', e.target.value)}
+                                        placeholder="주소 입력 (선택)"
+                                        className="w-full p-2.5 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:border-amber-500 transition-colors"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={acc.description || ''}
+                                        onChange={(e) => handleChange(index, 'description', e.target.value)}
+                                        placeholder="체크인·주차 등 비고 (선택)"
+                                        className="w-full p-2.5 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:border-amber-500 transition-colors"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 데스크탑 테이블 레이아웃 */}
+                    <div className="hidden md:block w-full overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-gray-50 dark:bg-gray-900/50">
@@ -147,6 +194,8 @@ const AccommodationDialog: React.FC<Props> = ({ isOpen, onClose, travelId }) => 
                             </tbody>
                         </table>
                     </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex justify-end shrink-0 bg-gray-50 dark:bg-gray-800/50 rounded-b-2xl">

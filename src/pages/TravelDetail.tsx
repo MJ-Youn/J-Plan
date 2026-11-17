@@ -1,23 +1,31 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useTravelStore } from '../store/travelStore';
-import { useAuthStore } from '../store/authStore';
 import TimeTable from '../components/travel/TimeTable';
 import ItineraryDialog from '../components/travel/dialog/ItineraryDialog';
 import AccommodationDialog from '../components/travel/dialog/AccommodationDialog';
 import GoogleMapView from '../components/travel/GoogleMapView';
 import DetailHeader from '../components/travel/DetailHeader';
 import DayFilter from '../components/travel/DayFilter';
+import WeatherBanner from '../components/travel/WeatherBanner';
 import AccommodationSection from '../components/travel/AccommodationSection';
 import JsonEditModal from '../components/travel/dialog/JsonEditModal';
+import ShareModal from '../components/travel/dialog/ShareModal';
+import ExcelExportModal from '../components/travel/dialog/ExcelExportModal';
+import ExcelPreviewModal from '../components/travel/dialog/ExcelPreviewModal';
+import DocumentsModal from '../components/travel/dialog/DocumentsModal';
+import ChecklistModal from '../components/travel/dialog/ChecklistModal';
+import ExpenseModal from '../components/travel/dialog/ExpenseModal';
+import ConflictModal from '../components/travel/dialog/ConflictModal';
 import { calculateRouteInfo } from '../utils/routeCalculator';
+import { exportTravelToIcs } from '../utils/icsExporter';
 import type { Itinerary, TravelExportData } from '../types/travel';
 
 /**
  * 여행 상세 페이지 컴포넌트입니다.
- * 타임라인 뷰와 지도 뷰를 통해 일정을 관리할 수 있습니다.
+ * 타임라인 뷰와 지도 뷰를 통해 일정을 관리하고, 공유·협업 및 Excel 내보내기를 지원합니다.
  *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 07.
@@ -25,8 +33,20 @@ import type { Itinerary, TravelExportData } from '../types/travel';
 const TravelDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { travels, itineraries, accommodations, isLoading, fetchTravels, fetchTravelDetail, deleteItinerary, updateFullTravelDetail } = useTravelStore();
-    const { user } = useAuthStore();
+    const {
+        travels,
+        itineraries,
+        accommodations,
+        isLoading,
+        conflictState,
+        clearConflict,
+        fetchTravels,
+        fetchTravelDetail,
+        deleteItinerary,
+        updateFullTravelDetail,
+        saveTravelDetail,
+        updateTravel,
+    } = useTravelStore();
 
     // Google Maps 라이브러리 (경로 계산 및 지오코딩)
     const routesLib = useMapsLibrary('routes');
@@ -39,22 +59,33 @@ const TravelDetail: React.FC = () => {
     const [selectedItineraryId, setSelectedItineraryId] = useState<string | null>(null);
     const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
     const [isJsonEditModalOpen, setIsJsonEditModalOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+    const [isExcelPreviewOpen, setIsExcelPreviewOpen] = useState(false);
+    const [isDocsModalOpen, setIsDocsModalOpen] = useState(false);
+    const [isChecklistOpen, setIsChecklistOpen] = useState(false);
+    const [isExpenseOpen, setIsExpenseOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Itinerary | null>(null);
     const [addModalData, setAddModalData] = useState<Partial<Itinerary> | null>(null);
     const [isAccModalOpen, setIsAccModalOpen] = useState(false);
     const [isRecalculatingRoutes, setIsRecalculatingRoutes] = useState(false);
     const [calcProgressText, setCalcProgressText] = useState<string | null>(null);
+    const hasLoadedListRef = useRef(false);
 
     const travel = travels.find((t) => t.id === id);
 
     useEffect(() => {
-        if (travels.length === 0) {
+        if (travels.length === 0 && !hasLoadedListRef.current) {
+            hasLoadedListRef.current = true;
             fetchTravels();
         }
-        if (id) {
-            fetchTravelDetail(id);
+    }, [travels.length, fetchTravels]);
+
+    useEffect(() => {
+        if (id && travels.length > 0) {
+            fetchTravelDetail(id, travel?.ownerId);
         }
-    }, [id, fetchTravels, fetchTravelDetail, travels.length]);
+    }, [id, travels.length, travel?.ownerId, fetchTravelDetail]);
 
     // 선택된 일정으로 자동 스크롤
     useEffect(() => {
@@ -103,25 +134,13 @@ const TravelDetail: React.FC = () => {
     }
 
     const totalDays = differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1;
-
-    const handlePrint = () => {
-        const isDark = document.documentElement.classList.contains('dark');
-        if (isDark) {
-            document.documentElement.classList.remove('dark');
-        }
-        setTimeout(() => {
-            window.print();
-            if (isDark) {
-                document.documentElement.classList.add('dark');
-            }
-        }, 100);
-    };
+    const allTravelItineraries = itineraries.filter((i) => i.travelId === id);
 
     const handleExportJSON = () => {
         const exportData: TravelExportData = {
             version: '1.0',
             travel: travel,
-            itineraries: itineraries.filter((i) => i.travelId === id),
+            itineraries: allTravelItineraries,
             accommodations: travelAccommodations,
         };
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -131,22 +150,6 @@ const TravelDetail: React.FC = () => {
         a.download = `jplan_${travel.name.replace(/\s+/g, '_')}.json`;
         a.click();
         URL.revokeObjectURL(url);
-    };
-
-    const handleShare = () => {
-        if (!user || !travel) return;
-        const shareId = btoa(`${user.id}:${travel.id}`);
-        const shareUrl = `${window.location.origin}/share/${shareId}`;
-
-        navigator.clipboard
-            .writeText(shareUrl)
-            .then(() => {
-                alert('공유 링크가 클립보드에 복사되었습니다.');
-            })
-            .catch((err) => {
-                console.error('Failed to copy share link: ', err);
-                alert(`공유 링크: ${shareUrl}`);
-            });
     };
 
     // 모든 이동 일정의 소요 시간 및 거리 일괄 재계산
@@ -248,8 +251,13 @@ const TravelDetail: React.FC = () => {
             {/* 헤더 섹션 */}
             <DetailHeader
                 travel={travel}
-                onPrint={handlePrint}
                 onExportJSON={handleExportJSON}
+                onExportICS={() => exportTravelToIcs(travel, allTravelItineraries)}
+                onOpenExcelPreview={() => setIsExcelPreviewOpen(true)}
+                onExportExcel={() => setIsExcelModalOpen(true)}
+                onOpenDocuments={() => setIsDocsModalOpen(true)}
+                onOpenChecklist={() => setIsChecklistOpen(true)}
+                onOpenExpense={() => setIsExpenseOpen(true)}
                 onOpenJsonEdit={() => setIsJsonEditModalOpen(true)}
                 onRecalculateRoutes={handleRecalculateRoutes}
                 isRecalculatingRoutes={isRecalculatingRoutes}
@@ -259,16 +267,24 @@ const TravelDetail: React.FC = () => {
                     setAddModalData(null);
                     setIsItineraryModalOpen(true);
                 }}
-                onShare={handleShare}
+                onShare={() => setIsShareModalOpen(true)}
             />
 
-            {/* 필터 및 뷰 토글 */}
+            {/* 필터 및 날씨 & 뷰 토글 */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 shrink-0 gap-3 print:hidden">
-                <DayFilter
-                    days={totalDays}
-                    selectedDay={selectedDay}
-                    setSelectedDay={setSelectedDay}
-                />
+                <div className="flex flex-col lg:flex-row lg:items-center gap-2 min-w-0 max-w-full">
+                    <DayFilter
+                        days={totalDays}
+                        selectedDay={selectedDay}
+                        setSelectedDay={setSelectedDay}
+                    />
+                    <WeatherBanner
+                        travel={travel}
+                        itineraries={allTravelItineraries}
+                        accommodations={travelAccommodations}
+                        selectedDay={selectedDay}
+                    />
+                </div>
 
                 {/* 모바일 탭 및 데스크탑 뷰 전환 */}
                 <div className="flex items-center space-x-2 w-full sm:w-auto">
@@ -316,8 +332,6 @@ const TravelDetail: React.FC = () => {
                                 travelId={id!}
                                 selectedItineraryId={selectedItineraryId}
                                 onItineraryClick={(itiId) => {
-                                    // selectedItineraryId 변경 시 GoogleMapView 내부 useEffect가 panTo를 실행함
-                                    // (onMarkerClick과 동일한 경로로 동작)
                                     setSelectedItineraryId(itiId);
                                 }}
                                 onAddItinerary={(defaultData) => {
@@ -337,6 +351,8 @@ const TravelDetail: React.FC = () => {
                                         deleteItinerary(itiId);
                                     }
                                 }}
+                                onDiscard={() => fetchTravelDetail(id!, travel.ownerId)}
+                                onShowOnMap={() => setActiveTab('map')}
                             />
                         </div>
                     </div>
@@ -369,23 +385,81 @@ const TravelDetail: React.FC = () => {
                 onClose={() => setIsAccModalOpen(false)}
                 travelId={id!}
             />
-            {travel && (
-                <JsonEditModal
-                    isOpen={isJsonEditModalOpen}
-                    onClose={() => setIsJsonEditModalOpen(false)}
-                    currentData={{
-                        version: '1.0',
-                        travel,
-                        itineraries: itineraries.filter((i) => i.travelId === id),
-                        accommodations: travelAccommodations,
-                    }}
-                    onSave={async (newData) => {
-                        if (id) {
-                            await updateFullTravelDetail(id, newData);
-                        }
-                    }}
-                />
-            )}
+            <JsonEditModal
+                isOpen={isJsonEditModalOpen}
+                onClose={() => setIsJsonEditModalOpen(false)}
+                currentData={{
+                    version: '1.0',
+                    travel,
+                    itineraries: allTravelItineraries,
+                    accommodations: travelAccommodations,
+                }}
+                onSave={async (newData) => {
+                    if (id) {
+                        await updateFullTravelDetail(id, newData);
+                    }
+                }}
+            />
+            <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                travel={travel}
+            />
+            <ExcelPreviewModal
+                isOpen={isExcelPreviewOpen}
+                onClose={() => setIsExcelPreviewOpen(false)}
+                travel={travel}
+                itineraries={allTravelItineraries}
+                accommodations={travelAccommodations}
+                onOpenExportOptions={() => setIsExcelModalOpen(true)}
+            />
+            <DocumentsModal
+                isOpen={isDocsModalOpen}
+                onClose={() => setIsDocsModalOpen(false)}
+                travel={travel}
+                canEdit={true}
+            />
+            <ChecklistModal
+                isOpen={isChecklistOpen}
+                onClose={() => setIsChecklistOpen(false)}
+                travel={travel}
+                canEdit={true}
+                onOpenDocuments={() => setIsDocsModalOpen(true)}
+            />
+            <ExpenseModal
+                isOpen={isExpenseOpen}
+                onClose={() => setIsExpenseOpen(false)}
+                travel={travel}
+                canEdit={true}
+            />
+            <ExcelExportModal
+                isOpen={isExcelModalOpen}
+                onClose={() => setIsExcelModalOpen(false)}
+                travel={travel}
+                itineraries={allTravelItineraries}
+                accommodations={travelAccommodations}
+                onSaveExportMeta={async (exportMeta) => {
+                    await updateTravel(travel.id, { exportMeta });
+                }}
+            />
+            <ConflictModal
+                isOpen={Boolean(conflictState)}
+                message={conflictState?.message || ''}
+                serverUpdatedBy={conflictState?.serverData?.updatedBy}
+                onClose={clearConflict}
+                onReloadServer={async () => {
+                    clearConflict();
+                    if (id) {
+                        await fetchTravelDetail(id, travel.ownerId);
+                    }
+                }}
+                onForceOverwrite={async () => {
+                    clearConflict();
+                    if (id) {
+                        await saveTravelDetail(id, true);
+                    }
+                }}
+            />
         </div>
     );
 };

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Calendar, MapPin, MoreVertical, Edit2, Trash2, Upload } from 'lucide-react';
+import { Plus, Calendar, MapPin, MoreVertical, Edit2, Trash2, Upload, Users, LogOut, Bot } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTravelStore } from '../store/travelStore';
 import type { Travel } from '../types/travel';
 import TravelDialog from '../components/travel/dialog/TravelDialog';
 import JsonImportModal from '../components/travel/dialog/JsonImportModal';
+import AiSkillGuideModal from '../components/travel/dialog/AiSkillGuideModal';
 
 /**
  * 메인 여행 목록 페이지입니다.
- * 
+ * 본인이 생성한 여행과 공유받은 공동 작업 여행을 함께 표시합니다.
+ *
  * @author 윤명준 (MJ Yun)
  * @since 2026. 05. 14.
  */
@@ -17,6 +19,7 @@ const TravelList: React.FC = () => {
     const navigate = useNavigate();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+    const [isAiSkillOpen, setIsAiSkillOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Travel | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -46,6 +49,19 @@ const TravelList: React.FC = () => {
         setOpenMenuId(null);
     };
 
+    const handleLeaveShared = async (e: React.MouseEvent, id: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!window.confirm('이 공동 작업 여행을 내 목록에서 제거하시겠습니까?')) {
+            return;
+        }
+        setOpenMenuId(null);
+        if (!import.meta.env.DEV) {
+            await fetch(`/api/data/travels/${id}/share?leave=1`, { method: 'DELETE' });
+        }
+        await fetchTravels();
+    };
+
     const toggleMenu = (e: React.MouseEvent, id: string) => {
         e.preventDefault();
         e.stopPropagation();
@@ -53,22 +69,29 @@ const TravelList: React.FC = () => {
     };
 
     return (
-        <div className="animate-fade-in-up pb-20">
+        <div className="max-w-screen-2xl mx-auto w-full animate-fade-in-up pb-20">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
                 <h2 className="text-3xl font-bold">내 여행 일정</h2>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+                    <button
+                        onClick={() => setIsAiSkillOpen(true)}
+                        className="flex items-center space-x-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors shadow-sm text-sm"
+                    >
+                        <Bot size={18} />
+                        <span className="hidden sm:inline">AI 일정 스킬</span>
+                    </button>
                     <button
                         onClick={() => setIsJsonModalOpen(true)}
-                        className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
+                        className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors shadow-sm text-sm"
                     >
-                        <Upload size={20} />
+                        <Upload size={18} />
                         <span className="hidden sm:inline">일정 가져오기</span>
                     </button>
                     <button
                         onClick={handleOpenCreate}
-                        className="flex items-center space-x-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-md"
+                        className="flex items-center space-x-2 bg-amber-600 hover:bg-amber-700 text-white px-3.5 sm:px-4 py-2 rounded-lg font-medium transition-colors shadow-md text-sm"
                     >
-                        <Plus size={20} />
+                        <Plus size={18} />
                         <span>새 여행 만들기</span>
                     </button>
                 </div>
@@ -93,7 +116,7 @@ const TravelList: React.FC = () => {
                     {travels.map((travel) => {
                         return (
                             <div
-                                key={travel.id}
+                                key={`${travel.ownerId || 'own'}_${travel.id}`}
                                 className="relative"
                             >
                                 <Link
@@ -101,6 +124,12 @@ const TravelList: React.FC = () => {
                                     className="group block h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 hover:shadow-xl hover:border-amber-300 dark:hover:border-amber-600 transition-all cursor-pointer"
                                 >
                                     <div className="pr-8">
+                                        {travel.isShared && (
+                                            <div className="inline-flex items-center gap-1 px-2 py-0.5 mb-2 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                <Users size={11} />
+                                                <span>공동 작업 · {travel.ownerName || '공유자'}</span>
+                                            </div>
+                                        )}
                                         <h3 className="text-xl font-semibold mb-3 group-hover:text-amber-600 dark:group-hover:text-amber-500 transition-colors line-clamp-1">{travel.name}</h3>
                                     </div>
                                     <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mt-4">
@@ -133,7 +162,7 @@ const TravelList: React.FC = () => {
                                     </button>
 
                                     {openMenuId === travel.id && (
-                                        <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 animate-in fade-in zoom-in-95">
+                                        <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 animate-in fade-in zoom-in-95">
                                             <button
                                                 onClick={(e) => handleOpenEdit(e, travel)}
                                                 className="w-full text-left px-4 py-2 text-sm flex items-center space-x-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -141,13 +170,23 @@ const TravelList: React.FC = () => {
                                                 <Edit2 size={14} />
                                                 <span>수정</span>
                                             </button>
-                                            <button
-                                                onClick={(e) => handleDelete(e, travel.id)}
-                                                className="w-full text-left px-4 py-2 text-sm flex items-center space-x-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                            >
-                                                <Trash2 size={14} />
-                                                <span>삭제</span>
-                                            </button>
+                                            {travel.isShared ? (
+                                                <button
+                                                    onClick={(e) => handleLeaveShared(e, travel.id)}
+                                                    className="w-full text-left px-4 py-2 text-sm flex items-center space-x-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                >
+                                                    <LogOut size={14} />
+                                                    <span>나가기</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => handleDelete(e, travel.id)}
+                                                    className="w-full text-left px-4 py-2 text-sm flex items-center space-x-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                >
+                                                    <Trash2 size={14} />
+                                                    <span>삭제</span>
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -170,6 +209,11 @@ const TravelList: React.FC = () => {
                     await importTravel(data);
                     navigate(`/travels/${data.travel.id}`);
                 }}
+            />
+
+            <AiSkillGuideModal
+                isOpen={isAiSkillOpen}
+                onClose={() => setIsAiSkillOpen(false)}
             />
         </div>
     );

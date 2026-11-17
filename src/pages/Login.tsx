@@ -1,8 +1,20 @@
 import { LogIn, Map as MapIcon, ShieldCheck, Sparkles } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { MOCK_USER, useAuthStore } from '../store/authStore';
+
+/**
+ * 내부 상대 경로인지 확인하여 오픈 리다이렉트를 방지합니다.
+ */
+function getSafeRedirectPath(raw: string | null): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('/') || trimmed.startsWith('//')) {
+        return null;
+    }
+    return trimmed;
+}
 
 /**
  * 로그인 페이지 컴포넌트입니다.
@@ -14,8 +26,11 @@ import { MOCK_USER, useAuthStore } from '../store/authStore';
  */
 const Login: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { user, checkAuth, setUser, isLoading } = useAuthStore();
     const [token, setToken] = useState<string | null>(null);
+
+    const redirectPath = getSafeRedirectPath(searchParams.get('redirect'));
 
     useEffect(() => {
         checkAuth();
@@ -23,6 +38,10 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         if (!isLoading && user) {
+            if (redirectPath) {
+                navigate(redirectPath, { replace: true });
+                return;
+            }
             const hasPendingImport = sessionStorage.getItem('jplan_pending_import');
             if (hasPendingImport) {
                 navigate('/import', { replace: true });
@@ -30,7 +49,7 @@ const Login: React.FC = () => {
                 navigate('/travels');
             }
         }
-    }, [user, isLoading, navigate]);
+    }, [user, isLoading, navigate, redirectPath]);
 
     /**
      * 구글 로그인 버튼 핸들러입니다.
@@ -47,7 +66,8 @@ const Login: React.FC = () => {
             return;
         }
 
-        window.location.href = `/api/auth/google?cf_token=${token}`;
+        const redirectQuery = redirectPath ? `&redirect=${encodeURIComponent(redirectPath)}` : '';
+        window.location.href = `/api/auth/google?cf_token=${token}${redirectQuery}`;
     };
 
     if (isLoading) {
@@ -87,9 +107,19 @@ const Login: React.FC = () => {
                 </div>
 
                 <p className="text-gray-500 dark:text-gray-400 mb-12 text-lg font-medium leading-relaxed">
-                    완벽한 여행을 위한
-                    <br />
-                    <span className="text-amber-600 dark:text-amber-500 font-bold">J들의 스마트한 선택</span>
+                    {redirectPath ? (
+                        <>
+                            공유된 여행 일정에 참여하려면
+                            <br />
+                            <span className="text-amber-600 dark:text-amber-500 font-bold">Google 로그인이 필요합니다</span>
+                        </>
+                    ) : (
+                        <>
+                            완벽한 여행을 위한
+                            <br />
+                            <span className="text-amber-600 dark:text-amber-500 font-bold">J들의 스마트한 선택</span>
+                        </>
+                    )}
                 </p>
 
                 <div className="space-y-6">

@@ -5,6 +5,7 @@ import { readFromClipboard, copyToClipboard } from '../../../utils/clipboard';
 import { generateGeminiPrompt } from '../../../utils/geminiPrompt';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 import type { TravelExportData } from '../../../types/travel';
+import AiSkillGuideModal from './AiSkillGuideModal';
 
 interface JsonImportModalProps {
     isOpen: boolean;
@@ -22,6 +23,7 @@ interface JsonImportModalProps {
 const JsonImportModal: React.FC<JsonImportModalProps> = ({ isOpen, onClose, onImport }) => {
     const [jsonText, setJsonText] = useState('');
     const [isPromptCopied, setIsPromptCopied] = useState(false);
+    const [isSkillGuideOpen, setIsSkillGuideOpen] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const fileInputId = useId();
@@ -195,20 +197,30 @@ const JsonImportModal: React.FC<JsonImportModalProps> = ({ isOpen, onClose, onIm
                             )}
                         </div>
 
-                        {/* Gemini 프롬프트 복사 버튼 */}
-                        <button
-                            type="button"
-                            onClick={handleCopyGeminiPrompt}
-                            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all border ${
-                                isPromptCopied
-                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
-                                    : 'bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/40 dark:border-purple-800 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
-                            }`}
-                            title="Gemini에 질문할 맞춤 프롬프트 양식을 복사합니다."
-                        >
-                            <Bot size={15} />
-                            <span>{isPromptCopied ? '프롬프트 복사완료!' : 'Gemini 프롬프트 복사'}</span>
-                        </button>
+                        {/* Gemini 프롬프트 복사 & 스킬 보기 버튼 */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => setIsSkillGuideOpen(true)}
+                                className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all border bg-white dark:bg-zinc-800 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/40"
+                                title="AI 일정 생성 스킬 및 맞춤 프롬프트 내용을 확인합니다."
+                            >
+                                <span>스킬 보기</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCopyGeminiPrompt}
+                                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all border ${
+                                    isPromptCopied
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
+                                        : 'bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/40 dark:border-purple-800 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
+                                }`}
+                                title="Gemini에 질문할 맞춤 프롬프트 양식을 복사합니다."
+                            >
+                                <Bot size={15} />
+                                <span>{isPromptCopied ? '프롬프트 복사완료!' : 'Gemini 프롬프트 복사'}</span>
+                            </button>
+                        </div>
                     </div>
 
                     {/* 텍스트 영역 (flex-1로 남은 높이 100% 꽉 채움) */}
@@ -308,6 +320,11 @@ const JsonImportModal: React.FC<JsonImportModalProps> = ({ isOpen, onClose, onIm
                     </button>
                 </div>
             </div>
+
+            <AiSkillGuideModal
+                isOpen={isSkillGuideOpen}
+                onClose={() => setIsSkillGuideOpen(false)}
+            />
         </div>
     );
 };

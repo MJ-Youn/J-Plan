@@ -1,9 +1,14 @@
 import { SignJWT } from 'jose';
+import { sanitizeInternalRedirect } from '../_utils/shareDb';
 
+/**
+ * Google OAuth 콜백을 처리하고 JWT 쿠키를 발급한 뒤 원래 경로(또는 /travels)로 리다이렉트합니다.
+ */
 export async function onRequestGet(context: any) {
     const { request, env } = context;
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
+    const redirectTarget = sanitizeInternalRedirect(url.searchParams.get('state'));
 
     if (!code) {
         return new Response('Missing code', { status: 400 });
@@ -13,7 +18,7 @@ export async function onRequestGet(context: any) {
     const clientSecret = env.GOOGLE_CLIENT_SECRET;
     const redirectUri = env.GOOGLE_REDIRECT_URI || `${url.origin}/api/auth/callback`;
 
-    // 1. Exchange code for access token
+    // 1. 인증 코드를 액세스 토큰으로 교환
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -31,7 +36,7 @@ export async function onRequestGet(context: any) {
         return new Response('Failed to get token', { status: 500 });
     }
 
-    // 2. Get user info from Google
+    // 2. Google 사용자 프로필 조회
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
@@ -43,7 +48,7 @@ export async function onRequestGet(context: any) {
 
     const db = env.DB;
 
-    // 3. Upsert user in DB
+    // 3. D1 사용자 정보 Upsert
     await db
         .prepare(
             `
@@ -57,7 +62,7 @@ export async function onRequestGet(context: any) {
         .bind(userData.id, userData.email, userData.name, userData.picture)
         .run();
 
-    // 4. Create JWT Token
+    // 4. JWT 토큰 생성
     const secret = new TextEncoder().encode(env.JWT_SECRET || 'default_secret_key_for_dev');
     const jwt = await new SignJWT({
         sub: userData.id,
@@ -70,9 +75,9 @@ export async function onRequestGet(context: any) {
         .setExpirationTime('7d')
         .sign(secret);
 
-    // 5. Set Cookie and redirect to Home
+    // 5. 쿠키 설정 및 대상 페이지로 리다이렉트
     const headers = new Headers();
-    headers.set('Location', '/travels');
+    headers.set('Location', redirectTarget);
     headers.set('Set-Cookie', `auth_token=${jwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`);
 
     return new Response(null, {

@@ -1,8 +1,9 @@
 import React from 'react';
-import { X, MapPin, Clock, AlignLeft, Info } from 'lucide-react';
+import { X, MapPin, Clock, AlignLeft, Info, Navigation, ExternalLink } from 'lucide-react';
 import type { Itinerary } from '../../../types/travel';
 import { getTypeEmoji, getTransportInfo } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import { buildNavigationLinks } from '../../../utils/navigationLinks';
 
 interface Props {
     isOpen: boolean;
@@ -116,6 +117,44 @@ const SharedItineraryDialog: React.FC<Props> = ({ isOpen, onClose, itinerary }) 
                                 </div>
                             </div>
                         )}
+
+                        {(() => {
+                            const navLinks = buildNavigationLinks(itinerary);
+                            if (navLinks.length === 0) return null;
+                            const primary = navLinks[0];
+                            const others = navLinks.slice(1);
+                            return (
+                                <div className="pt-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold flex items-center gap-1.5">
+                                        <Navigation size={13} className="text-blue-500" />
+                                        <span>현지 길찾기 바로 연결</span>
+                                    </div>
+                                    <a
+                                        href={primary.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                    >
+                                        <Navigation size={14} />
+                                        <span>{primary.label}로 길찾기</span>
+                                        <ExternalLink size={12} />
+                                    </a>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {others.map((link) => (
+                                            <a
+                                                key={link.provider}
+                                                href={link.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="py-1.5 px-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/70 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-[11px] font-semibold text-center truncate transition-colors"
+                                            >
+                                                {link.label}
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 

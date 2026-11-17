@@ -1,8 +1,9 @@
-import { AlignLeft, ArrowRight, ChevronDown, ChevronUp, Clock, Edit2, Map as MapIcon, Navigation, Save, Trash2, X } from 'lucide-react';
+import { AlignLeft, ArrowRight, ChevronDown, ChevronUp, Clock, Edit2, ExternalLink, FastForward, Map as MapIcon, Navigation, Save, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTravelStore } from '../../store/travelStore';
 import type { Itinerary } from '../../types/travel';
 import { getTransportInfo, getTypeEmoji } from '../../types/travel';
+import { buildNavigationLinks } from '../../utils/navigationLinks';
 /**
  * 시간대별 일정을 표시하는 타임테이블 컴포넌트입니다.
  *
@@ -20,6 +21,8 @@ interface Props {
     onEdit?: (e: React.MouseEvent, iti: Itinerary) => void;
     onDelete?: (e: React.MouseEvent, id: string) => void;
     onAddItinerary?: (defaultData: Partial<Itinerary>) => void;
+    onDiscard?: () => Promise<void> | void;
+    onShowOnMap?: () => void;
     readOnly?: boolean;
 }
 
@@ -41,8 +44,8 @@ const formatTime = (mins: number) => {
     return `${h}:${m}`;
 };
 
-const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, travelId, selectedItineraryId, onItineraryClick, onEdit, onDelete, onAddItinerary, readOnly }) => {
-    const { updateItinerary, hasUnsavedChanges, saveTravelDetail, fetchTravelDetail } = useTravelStore();
+const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, totalDays, travelId, selectedItineraryId, onItineraryClick, onEdit, onDelete, onAddItinerary, onDiscard, onShowOnMap, readOnly }) => {
+    const { updateItinerary, shiftItinerariesFrom, hasUnsavedChanges, saveTravelDetail, fetchTravelDetail } = useTravelStore();
     const HOUR_HEIGHT = 160;
     const MIN_HEIGHT = 40;
 
@@ -115,9 +118,13 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
 
     const handleDiscardAll = useCallback(async () => {
         if (window.confirm('변경 사항을 취소하시겠습니까? (원래 상태로 되돌립니다)')) {
-            await fetchTravelDetail(travelId);
+            if (onDiscard) {
+                await onDiscard();
+            } else {
+                await fetchTravelDetail(travelId);
+            }
         }
-    }, [fetchTravelDetail, travelId]);
+    }, [fetchTravelDetail, onDiscard, travelId]);
 
     // pending 변경 사항 로직 걷어냄 (store가 관리)
     const effectiveItineraries = itineraries;
@@ -446,6 +453,11 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                 {getTypeEmoji(p.event.type, p.event.transportMode)} {p.event.type}
                             </span>
                             {colId === 'all' && maxCol > 0 && <span className="text-[10px] text-gray-500 bg-gray-100 dark:bg-zinc-700 px-1 rounded">{p.event.dayIndex}일차</span>}
+                            {typeof p.event.costAmount === 'number' && p.event.costAmount > 0 && (
+                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded">
+                                    💰 {p.event.costAmount.toLocaleString()} {p.event.costCurrency || 'KRW'}
+                                </span>
+                            )}
                         </div>
                         <div className={`${isMobile && isSelected ? 'flex' : 'hidden'} group-hover:flex space-x-1 shrink-0 bg-white/80 dark:bg-gray-800/80 rounded p-0.5`}>
                             {isMoveableBetween && (
@@ -455,6 +467,20 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                     title="다음 일정과 사이에 이동 추가"
                                 >
                                     <Navigation size={12} />
+                                </button>
+                            )}
+                            {!readOnly && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (window.confirm(`"${p.event.content}" 포함 이후 ${p.event.dayIndex}일차 일정을 모두 +15분 뒤로 미룰까요?`)) {
+                                            shiftItinerariesFrom(travelId, p.event.dayIndex, p.event.time, 15);
+                                        }
+                                    }}
+                                    className="text-gray-400 hover:text-amber-500 transition-colors"
+                                    title="이 일정부터 이후 일정 +15분 밀기"
+                                >
+                                    <FastForward size={12} />
                                 </button>
                             )}
                             {!readOnly && onEdit && (
@@ -762,25 +788,78 @@ const TimeTable: React.FC<Props> = ({ itineraries, selectedDay, isMapExpanded, t
                                         </div>
                                     </div>
 
-                                    {/* 기본 액션 버튼 */}
+                                    {/* 모바일 현지 길찾기 & 인앱 지도 이동 버튼 */}
+                                    {(() => {
+                                        const navLinks = buildNavigationLinks(selectedEvent);
+                                        if (navLinks.length === 0 && !onShowOnMap) return null;
+                                        const primaryNav = navLinks[0];
+                                        return (
+                                            <div className="flex items-center gap-1.5 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                                                {primaryNav && (
+                                                    <a
+                                                        href={primaryNav.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
+                                                    >
+                                                        <Navigation size={13} />
+                                                        <span>Google 지도 길찾기</span>
+                                                        <ExternalLink size={11} />
+                                                    </a>
+                                                )}
+                                                {onShowOnMap && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={onShowOnMap}
+                                                        className="py-2 px-3 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shrink-0"
+                                                    >
+                                                        <MapIcon size={13} />
+                                                        <span>지도</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* 기본 액션 & 일괄 시간 이동 버튼 */}
                                     {!readOnly && (
-                                        <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
-                                            {onEdit && (
-                                                <button
-                                                    onClick={(e) => onEdit(e, selectedEvent)}
-                                                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
-                                                >
-                                                    <Edit2 size={16} /> 수정하기
-                                                </button>
-                                            )}
-                                            {onDelete && (
-                                                <button
-                                                    onClick={(e) => onDelete(e, selectedEvent.id)}
-                                                    className="w-14 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            )}
+                                        <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                                            <div className="flex items-center justify-between gap-1.5">
+                                                <span className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+                                                    <FastForward size={12} className="text-amber-500" />
+                                                    이후 일정 일괄 이동
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                    {([-15, 15, 30] as const).map((delta) => (
+                                                        <button
+                                                            key={delta}
+                                                            type="button"
+                                                            onClick={() => shiftItinerariesFrom(travelId, selectedEvent.dayIndex, selectedEvent.time, delta)}
+                                                            className="px-2 py-1 text-[11px] font-bold rounded-md bg-gray-100 dark:bg-zinc-800 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-gray-700 dark:text-gray-200 transition-colors"
+                                                        >
+                                                            {delta > 0 ? `+${delta}분` : `${delta}분`}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {onEdit && (
+                                                    <button
+                                                        onClick={(e) => onEdit(e, selectedEvent)}
+                                                        className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                                                    >
+                                                        <Edit2 size={16} /> 수정하기
+                                                    </button>
+                                                )}
+                                                {onDelete && (
+                                                    <button
+                                                        onClick={(e) => onDelete(e, selectedEvent.id)}
+                                                        className="w-14 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center border border-red-100 dark:border-red-900/30"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

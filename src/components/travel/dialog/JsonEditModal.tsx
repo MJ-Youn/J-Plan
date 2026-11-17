@@ -19,14 +19,17 @@ interface JsonEditModalProps {
  * @author 윤명준 (MJ Yun)
  * @since 2026. 10. 12.
  */
-const JsonEditModal: React.FC<JsonEditModalProps> = ({ isOpen, onClose, currentData, onSave }) => {
+const JsonEditModal: React.FC<JsonEditModalProps> = (props) => {
+    useEscapeKey(props.isOpen, props.onClose);
+    if (!props.isOpen) return null;
+    return <JsonEditModalContent {...props} />;
+};
+
+const JsonEditModalContent: React.FC<JsonEditModalProps> = ({ onClose, currentData, onSave }) => {
     const formattedInitial = useMemo(() => JSON.stringify(currentData, null, 2), [currentData]);
     const [jsonText, setJsonText] = useState(formattedInitial);
     const [isSaving, setIsSaving] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-    // Mac, Windows, Android 모든 환경의 ESC 키 닫기 처리
-    useEscapeKey(isOpen, onClose);
 
     const showToast = (msg: string) => {
         setToastMessage(msg);
@@ -40,8 +43,6 @@ const JsonEditModal: React.FC<JsonEditModalProps> = ({ isOpen, onClose, currentD
         }
         return validateTravelJson(jsonText);
     }, [jsonText]);
-
-    if (!isOpen) return null;
 
     // 1. 전체 JSON 클립보드 복사
     const handleCopyAll = async () => {
