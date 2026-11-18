@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3 } from 'lucide-react';
+import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3, Edit2, Check } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Travel } from '../../../types/travel';
@@ -54,8 +54,17 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     const [filterDay, setFilterDay] = useState<number | 'ALL'>('ALL');
     const [isSaving, setIsSaving] = useState(false);
 
+    // 인라인 수정 상태
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editDayIndex, setEditDayIndex] = useState<number>(1);
+    const [editCategory, setEditCategory] = useState<ExpenseCategory>('식비');
+    const [editTitle, setEditTitle] = useState('');
+    const [editAmount, setEditAmount] = useState('');
+    const [editCurrency, setEditCurrency] = useState<ExpenseCurrency>('JPY');
+    const [editPaidBy, setEditPaidBy] = useState('');
+
     useEscapeKey(true, onClose, {
-        isDirty: Boolean(title.trim() || amount.trim() || newParticipant.trim()),
+        isDirty: Boolean(editingId || title.trim() || amount.trim() || newParticipant.trim()),
     });
 
     useEffect(() => {
@@ -74,7 +83,9 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     }, []);
 
     // 일정에 등록된 비용(1:N) + 별도 추가된 비용을 하나의 목록으로 통합
-    const combinedExpenses = useMemo<Array<ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string }>>(() => {
+    const combinedExpenses = useMemo<
+        Array<ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string; rawCostTitle?: string }>
+    >(() => {
         const mapItineraryCat = (type: string): ExpenseCategory => {
             if (type === '이동') return '교통·렌터카';
             if (type === '식사') return '식비';
@@ -89,6 +100,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     id: `${i.id}:${c.id}`,
                     itineraryId: i.id,
                     costId: c.id,
+                    rawCostTitle: c.title || i.content,
                     dayIndex: i.dayIndex,
                     category: mapItineraryCat(i.type),
                     title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
@@ -153,6 +165,68 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         setExpenses(travel.id, [item, ...expenses]);
         setTitle('');
         setAmount('');
+    };
+
+    const startEditing = (
+        exp: ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string; rawCostTitle?: string },
+    ) => {
+        setEditingId(exp.id);
+        setEditDayIndex(exp.dayIndex);
+        setEditCategory(exp.category);
+        setEditTitle(exp.source === 'itinerary' ? exp.rawCostTitle || exp.title : exp.title);
+        setEditAmount(String(exp.amount));
+        setEditCurrency(exp.currency);
+        setEditPaidBy(exp.paidBy || '');
+    };
+
+    const handleSaveEdit = (
+        exp: ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string },
+    ) => {
+        if (!canEdit) return;
+        const numAmount = Number(editAmount.replace(/,/g, '').trim());
+        if (!editTitle.trim() || Number.isNaN(numAmount) || numAmount <= 0) {
+            alert('지출 내역(사용처)과 올바른 금액을 입력해 주세요.');
+            return;
+        }
+
+        if (exp.source === 'itinerary' && exp.itineraryId) {
+            const target = itineraries.find((i) => i.id === exp.itineraryId);
+            if (!target) return;
+            const nextCosts = getItineraryCosts(target).map((c) =>
+                c.id === exp.costId
+                    ? {
+                          ...c,
+                          id: c.id.endsWith('_legacy_cost') ? uuidv4() : c.id,
+                          title: editTitle.trim(),
+                          amount: numAmount,
+                          currency: editCurrency,
+                          paidBy: editPaidBy.trim() || undefined,
+                      }
+                    : c,
+            );
+            updateItinerary(target.id, {
+                costs: nextCosts,
+                costAmount: undefined,
+                costCurrency: undefined,
+                paidBy: undefined,
+            });
+        } else {
+            const nextManual = expenses.map((x) =>
+                x.id === exp.id
+                    ? {
+                          ...x,
+                          dayIndex: editDayIndex,
+                          category: editCategory,
+                          title: editTitle.trim(),
+                          amount: numAmount,
+                          currency: editCurrency,
+                          paidBy: editPaidBy.trim() || undefined,
+                      }
+                    : x,
+            );
+            setExpenses(travel.id, nextManual);
+        }
+        setEditingId(null);
     };
 
     const handleDeleteExpense = (exp: ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string }) => {
@@ -390,6 +464,123 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                 <div className="space-y-2">
                                     {filteredExpenses.map((exp) => {
                                         const krw = convertToKrw(exp.amount, exp.currency, rates);
+                                        const isEditingThis = editingId === exp.id;
+
+                                        if (isEditingThis) {
+                                            return (
+                                                <div
+                                                    key={exp.id}
+                                                    className="p-3 rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-amber-50/40 dark:bg-amber-950/20 space-y-2 text-xs"
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="font-bold text-amber-800 dark:text-amber-300">
+                                                            {exp.source === 'itinerary' ? '일정 연동 경비 수정' : '지출 내역 수정'}
+                                                        </span>
+                                                        {exp.source === 'itinerary' && (
+                                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                                {exp.dayIndex}일차 · {exp.category}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-12 gap-2">
+                                                        {exp.source === 'manual' && (
+                                                            <>
+                                                                <select
+                                                                    value={editDayIndex}
+                                                                    onChange={(e) => setEditDayIndex(Number(e.target.value))}
+                                                                    className="col-span-1 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                                >
+                                                                    {Array.from({ length: totalDays }, (_, i) => (
+                                                                        <option key={i + 1} value={i + 1}>
+                                                                            {i + 1}일차
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <select
+                                                                    value={editCategory}
+                                                                    onChange={(e) => setEditCategory(e.target.value as ExpenseCategory)}
+                                                                    className="col-span-1 sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                                >
+                                                                    {EXPENSE_CATEGORIES.map((c) => (
+                                                                        <option key={c} value={c}>
+                                                                            {c}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </>
+                                                        )}
+                                                        <input
+                                                            type="text"
+                                                            value={editTitle}
+                                                            onChange={(e) => setEditTitle(e.target.value)}
+                                                            placeholder={exp.source === 'itinerary' ? '사용처/설명' : '지출 내역'}
+                                                            className={`col-span-2 ${
+                                                                exp.source === 'manual' ? 'sm:col-span-7' : 'sm:col-span-5'
+                                                            } p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none focus:border-amber-500`}
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            value={editAmount}
+                                                            onChange={(e) => setEditAmount(e.target.value)}
+                                                            placeholder="금액"
+                                                            className="col-span-1 sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                        />
+                                                        <select
+                                                            value={editCurrency}
+                                                            onChange={(e) => setEditCurrency(e.target.value as ExpenseCurrency)}
+                                                            className="col-span-1 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                        >
+                                                            {CURRENCIES.map((cur) => (
+                                                                <option key={cur} value={cur}>
+                                                                    {cur}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {participants.length > 0 ? (
+                                                            <select
+                                                                value={editPaidBy}
+                                                                onChange={(e) => setEditPaidBy(e.target.value)}
+                                                                className="col-span-2 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                            >
+                                                                <option value="">결제자</option>
+                                                                {participants.map((p) => (
+                                                                    <option key={p} value={p}>
+                                                                        {p}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <input
+                                                                type="text"
+                                                                value={editPaidBy}
+                                                                onChange={(e) => setEditPaidBy(e.target.value)}
+                                                                placeholder="결제자"
+                                                                className="col-span-2 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex justify-end gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingId(null)}
+                                                            className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 font-medium"
+                                                        >
+                                                            취소
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSaveEdit(exp)}
+                                                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold inline-flex items-center gap-1"
+                                                        >
+                                                            <Check size={12} />
+                                                            적용
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <div
                                                 key={exp.id}
@@ -418,7 +609,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="flex items-center gap-2 shrink-0">
+                                                <div className="flex items-center gap-1.5 shrink-0">
                                                     <div className="text-right">
                                                         <div className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
                                                             {exp.amount.toLocaleString()} {exp.currency}
@@ -428,14 +619,24 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                                         )}
                                                     </div>
                                                     {canEdit && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteExpense(exp)}
-                                                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                            title={exp.source === 'itinerary' ? '일정 비용 제거' : '삭제'}
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => startEditing(exp)}
+                                                                className="p-1.5 text-gray-400 hover:text-amber-600 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                                                title="수정"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteExpense(exp)}
+                                                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                                title={exp.source === 'itinerary' ? '일정 비용 제거' : '삭제'}
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>

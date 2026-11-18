@@ -12,6 +12,8 @@ import {
     Save,
     FolderLock,
     Loader2,
+    Edit2,
+    Check,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import type { ChecklistCategory, ChecklistItem, Travel, TravelDocument } from '../../../types/travel';
@@ -82,8 +84,15 @@ const ChecklistModalContent: React.FC<ChecklistModalProps> = ({
     const [previewTarget, setPreviewTarget] = useState<{ title: string; blobUrl: string; mimeType: string } | null>(null);
     const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
 
+    // 인라인 수정 상태
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editCat, setEditCat] = useState<ChecklistCategory>('서류·예약');
+    const [editTitle, setEditTitle] = useState('');
+    const [editAssignee, setEditAssignee] = useState('');
+    const [editMemo, setEditMemo] = useState('');
+
     useEscapeKey(true, onClose, {
-        isDirty: Boolean(newTitle.trim() || newAssignee.trim()),
+        isDirty: Boolean(editingId || newTitle.trim() || newAssignee.trim()),
     });
 
     useEffect(() => {
@@ -143,6 +152,33 @@ const ChecklistModalContent: React.FC<ChecklistModalProps> = ({
             travel.id,
             checklists.filter((c) => c.id !== id),
         );
+    };
+
+    const startEditingItem = (item: ChecklistItem) => {
+        setEditingId(item.id);
+        setEditCat(item.category);
+        setEditTitle(item.title);
+        setEditAssignee(item.assignee || '');
+        setEditMemo(item.memo || '');
+    };
+
+    const handleSaveEditItem = (id: string) => {
+        if (!canEdit || !editTitle.trim()) return;
+        setChecklists(
+            travel.id,
+            checklists.map((c) =>
+                c.id === id
+                    ? {
+                          ...c,
+                          category: editCat,
+                          title: editTitle.trim(),
+                          assignee: editAssignee.trim() || undefined,
+                          memo: editMemo.trim() || undefined,
+                      }
+                    : c,
+            ),
+        );
+        setEditingId(null);
     };
 
     const handleLinkDoc = (itemId: string, docId: string) => {
@@ -388,6 +424,68 @@ const ChecklistModalContent: React.FC<ChecklistModalProps> = ({
                         <div className="space-y-2">
                             {filteredItems.map((item) => {
                                 const linkedDoc = item.linkedDocumentId ? docs.find((d) => d.id === item.linkedDocumentId) : undefined;
+                                if (editingId === item.id) {
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className="p-3 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2 text-xs"
+                                        >
+                                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                                <select
+                                                    value={editCat}
+                                                    onChange={(e) => setEditCat(e.target.value as ChecklistCategory)}
+                                                    className="sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                >
+                                                    {CHECKLIST_CATEGORIES.map((c) => (
+                                                        <option key={c} value={c}>
+                                                            {c}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <input
+                                                    type="text"
+                                                    value={editTitle}
+                                                    onChange={(e) => setEditTitle(e.target.value)}
+                                                    placeholder="준비물 항목 *"
+                                                    className="sm:col-span-6 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none focus:border-emerald-500"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={editAssignee}
+                                                    onChange={(e) => setEditAssignee(e.target.value)}
+                                                    placeholder="담당자 (선택)"
+                                                    className="sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                />
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={editMemo}
+                                                    onChange={(e) => setEditMemo(e.target.value)}
+                                                    placeholder="메모 (선택)"
+                                                    className="flex-1 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                />
+                                                <div className="flex justify-end gap-1.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingId(null)}
+                                                        className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 font-medium"
+                                                    >
+                                                        취소
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSaveEditItem(item.id)}
+                                                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1"
+                                                    >
+                                                        <Check size={12} />
+                                                        적용
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
                                 return (
                                     <div
                                         key={item.id}
@@ -467,14 +565,24 @@ const ChecklistModalContent: React.FC<ChecklistModalProps> = ({
                                             )}
 
                                             {canEdit && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDelete(item.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                    title="삭제"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditingItem(item)}
+                                                        className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                                        title="수정"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDelete(item.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        title="삭제"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>

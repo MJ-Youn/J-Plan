@@ -1,5 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { X, Copy, ClipboardPaste, RotateCcw, Sparkles, CheckCircle2, AlertCircle, Bot, ArrowRight, Save } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import {
+    X,
+    Copy,
+    ClipboardPaste,
+    RotateCcw,
+    Sparkles,
+    CheckCircle2,
+    AlertCircle,
+    Bot,
+    ArrowRight,
+    Save,
+    Search,
+    ChevronUp,
+    ChevronDown,
+    Replace,
+} from 'lucide-react';
 import { validateTravelJson } from '../../../utils/jsonValidator';
 import { copyToClipboard, readFromClipboard } from '../../../utils/clipboard';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
@@ -30,6 +45,77 @@ const JsonEditModalContent: React.FC<JsonEditModalProps> = ({ onClose, currentDa
     const [isSaving, setIsSaving] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const { requestClose } = useEscapeKey(true, onClose, { isDirty: jsonText !== formattedInitial });
+
+    // 찾아 바꾸기 상태
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const findInputRef = useRef<HTMLInputElement>(null);
+    const [isFindOpen, setIsFindOpen] = useState(false);
+    const [findText, setFindText] = useState('');
+    const [replaceText, setReplaceText] = useState('');
+    const [caseSensitive, setCaseSensitive] = useState(false);
+    const [activeMatchIdx, setActiveMatchIdx] = useState(0);
+
+    const matches = useMemo(() => {
+        if (!findText) return [];
+        const haystack = caseSensitive ? jsonText : jsonText.toLowerCase();
+        const needle = caseSensitive ? findText : findText.toLowerCase();
+        const list: Array<{ start: number; end: number }> = [];
+        let from = 0;
+        while (from <= haystack.length - needle.length) {
+            const idx = haystack.indexOf(needle, from);
+            if (idx === -1) break;
+            list.push({ start: idx, end: idx + needle.length });
+            from = idx + Math.max(1, needle.length);
+        }
+        return list;
+    }, [jsonText, findText, caseSensitive]);
+
+    const jumpToMatch = (idx: number) => {
+        if (matches.length === 0) return;
+        const normalizedIdx = ((idx % matches.length) + matches.length) % matches.length;
+        setActiveMatchIdx(normalizedIdx);
+        const target = matches[normalizedIdx];
+        const el = textareaRef.current;
+        if (!el) return;
+
+        el.focus();
+        el.setSelectionRange(target.start, target.end);
+        // 매치 위치가 보이도록 대략적인 줄 위치로 스크롤
+        const linesBefore = jsonText.slice(0, target.start).split('\n').length - 1;
+        const lineHeight = 22;
+        el.scrollTop = Math.max(0, linesBefore * lineHeight - el.clientHeight / 3);
+    };
+
+    const handleReplaceCurrent = () => {
+        if (matches.length === 0) return;
+        const safeIdx = activeMatchIdx < matches.length ? activeMatchIdx : 0;
+        const target = matches[safeIdx];
+        const nextText = jsonText.slice(0, target.start) + replaceText + jsonText.slice(target.end);
+        setJsonText(nextText);
+        showToast('선택된 항목을 바꾸었습니다.');
+        window.setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+                el.focus();
+                el.setSelectionRange(target.start, target.start + replaceText.length);
+            }
+        }, 0);
+    };
+
+    const handleReplaceAll = () => {
+        if (!findText || matches.length === 0) return;
+        const count = matches.length;
+        let result = '';
+        let cursor = 0;
+        for (const m of matches) {
+            result += jsonText.slice(cursor, m.start) + replaceText;
+            cursor = m.end;
+        }
+        result += jsonText.slice(cursor);
+        setJsonText(result);
+        setActiveMatchIdx(0);
+        showToast(`총 ${count}건을 바꾸었습니다.`);
+    };
 
     const showToast = (msg: string) => {
         setToastMessage(msg);
@@ -219,6 +305,27 @@ ${jsonText}
                                 <RotateCcw size={14} />
                                 <span className="hidden sm:inline">되돌리기</span>
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsFindOpen((prev) => {
+                                        const next = !prev;
+                                        if (next) {
+                                            window.setTimeout(() => findInputRef.current?.focus(), 0);
+                                        }
+                                        return next;
+                                    });
+                                }}
+                                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                    isFindOpen
+                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'
+                                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800'
+                                }`}
+                                title="찾기 및 바꾸기 (Ctrl/Cmd+F)"
+                            >
+                                <Search size={14} />
+                                <span>찾기·바꾸기</span>
+                            </button>
                         </div>
 
                         {/* Gemini 수정 요청 프롬프트 복사 */}
@@ -233,11 +340,113 @@ ${jsonText}
                         </button>
                     </div>
 
+                    {/* 찾아 바꾸기 바 */}
+                    {isFindOpen && (
+                        <div className="shrink-0 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col gap-2 text-xs">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <div className="relative flex-1 min-w-[160px]">
+                                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        ref={findInputRef}
+                                        type="text"
+                                        value={findText}
+                                        onChange={(e) => {
+                                            setFindText(e.target.value);
+                                            setActiveMatchIdx(0);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                jumpToMatch(e.shiftKey ? activeMatchIdx - 1 : activeMatchIdx + 1);
+                                            }
+                                        }}
+                                        placeholder="찾을 내용..."
+                                        className="w-full pl-8 pr-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none focus:border-amber-500 font-mono"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCaseSensitive((prev) => !prev)}
+                                    className={`px-2 py-1.5 rounded-lg border font-mono font-bold transition-colors ${
+                                        caseSensitive
+                                            ? 'bg-amber-600 text-white border-amber-600'
+                                            : 'bg-white dark:bg-zinc-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-zinc-700'
+                                    }`}
+                                    title="대소문자 구분"
+                                >
+                                    Aa
+                                </button>
+                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 min-w-[52px] text-center">
+                                    {matches.length > 0
+                                        ? `${(activeMatchIdx % matches.length) + 1} / ${matches.length}`
+                                        : findText
+                                          ? '0건'
+                                          : '-'}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={matches.length === 0}
+                                    onClick={() => jumpToMatch(activeMatchIdx - 1)}
+                                    className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
+                                    title="이전 찾기"
+                                >
+                                    <ChevronUp size={13} />
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={matches.length === 0}
+                                    onClick={() => jumpToMatch(activeMatchIdx + 1)}
+                                    className="p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 disabled:opacity-40"
+                                    title="다음 찾기"
+                                >
+                                    <ChevronDown size={13} />
+                                </button>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <div className="relative flex-1 min-w-[160px]">
+                                    <Replace size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        value={replaceText}
+                                        onChange={(e) => setReplaceText(e.target.value)}
+                                        placeholder="바꿀 내용..."
+                                        className="w-full pl-8 pr-2 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none focus:border-amber-500 font-mono"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={matches.length === 0}
+                                    onClick={handleReplaceCurrent}
+                                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-700 dark:text-gray-200 font-semibold disabled:opacity-40"
+                                >
+                                    바꾸기
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={matches.length === 0}
+                                    onClick={handleReplaceAll}
+                                    className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold disabled:opacity-40"
+                                >
+                                    모두 바꾸기 ({matches.length})
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* 에디터 (flex-1로 남은 공간 100% 꽉 채움) */}
                     <div className="flex-1 min-h-[220px] flex flex-col">
                         <textarea
+                            ref={textareaRef}
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
+                            onKeyDown={(e) => {
+                                if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h')) {
+                                    e.preventDefault();
+                                    setIsFindOpen(true);
+                                    window.setTimeout(() => findInputRef.current?.focus(), 0);
+                                }
+                            }}
                             rows={15}
                             className="flex-1 w-full min-h-[200px] p-3 sm:p-4 font-mono text-xs sm:text-sm bg-gray-50 dark:bg-zinc-950/60 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 text-gray-800 dark:text-gray-200 resize-none leading-relaxed"
                             spellCheck={false}
