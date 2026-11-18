@@ -31,7 +31,7 @@ const AccommodationDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId
     // 마지막 날(귀국/귀가일)은 숙박하지 않으므로 totalDays - 1 박까지만 숙소 입력 가능
     const stayDays = Math.max(0, totalDays - 1);
 
-    const [accList, setAccList] = useState<Partial<Accommodation>[]>(() => {
+    const [initialAccList] = useState<Partial<Accommodation>[]>(() => {
         const existing = accommodations.filter((a) => a.travelId === travelId);
         return Array.from({ length: stayDays }).map((_, i) => {
             const dayIndex = i + 1;
@@ -39,7 +39,9 @@ const AccommodationDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId
             return found ? { ...found } : { travelId, dayIndex, name: '', address: '', description: '', phone: '' };
         });
     });
-    const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
+    const [accList, setAccList] = useState<Partial<Accommodation>[]>(() => initialAccList.map((item) => ({ ...item })));
+    const isDirty = JSON.stringify(accList) !== JSON.stringify(initialAccList);
+    const { handleDragStart, modalStyle, requestClose } = useDialog(isOpen, onClose, { isDirty });
 
     const handleChange = (index: number, field: keyof Accommodation, value: string) => {
         const newList = [...accList];
@@ -78,7 +80,8 @@ const AccommodationDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId
                 >
                     <h3 className="font-bold text-lg">전체 일정 숙소 관리</h3>
                     <button
-                        onClick={onClose}
+                        type="button"
+                        onClick={requestClose}
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
                     >
                         <X size={20} />
@@ -200,7 +203,8 @@ const AccommodationDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId
 
                 <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex justify-end shrink-0 bg-gray-50 dark:bg-gray-800/50 rounded-b-2xl">
                     <button
-                        onClick={onClose}
+                        type="button"
+                        onClick={requestClose}
                         className="px-4 py-2 mr-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
                     >
                         취소

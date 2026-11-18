@@ -20,7 +20,6 @@ interface JsonEditModalProps {
  * @since 2026. 10. 12.
  */
 const JsonEditModal: React.FC<JsonEditModalProps> = (props) => {
-    useEscapeKey(props.isOpen, props.onClose);
     if (!props.isOpen) return null;
     return <JsonEditModalContent {...props} />;
 };
@@ -30,6 +29,7 @@ const JsonEditModalContent: React.FC<JsonEditModalProps> = ({ onClose, currentDa
     const [jsonText, setJsonText] = useState(formattedInitial);
     const [isSaving, setIsSaving] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const { requestClose } = useEscapeKey(true, onClose, { isDirty: jsonText !== formattedInitial });
 
     const showToast = (msg: string) => {
         setToastMessage(msg);
@@ -169,7 +169,8 @@ ${jsonText}
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        type="button"
+                        onClick={requestClose}
                         className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                         aria-label="닫기"
                     >
@@ -291,7 +292,7 @@ ${jsonText}
                 <div className="px-5 py-3.5 sm:px-6 sm:py-4 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/70 dark:bg-zinc-950/40 flex items-center justify-end space-x-2 shrink-0">
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={requestClose}
                         disabled={isSaving}
                         className="px-4 py-2 text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
                     >

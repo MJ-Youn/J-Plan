@@ -100,19 +100,99 @@ export async function onRequestPatch(context: any) {
     }
 
     const body = (await request.json()) as Record<string, unknown>;
+    const allowedCategories = ['항공', '숙소', '렌터카', '보험·입국', '티켓·QR', '기타'];
+
     const nextVisibility =
         body.visibility === 'owner_only' || body.visibility === 'collaborators' || body.visibility === 'all_shared'
             ? body.visibility
             : String(row.visibility);
 
+    const nextTitle =
+        typeof body.title === 'string' && body.title.trim() ? body.title.trim() : String(row.title);
+
+    const nextCategory =
+        typeof body.category === 'string' && allowedCategories.includes(body.category)
+            ? body.category
+            : String(row.category);
+
+    const nextDayIndex =
+        body.dayIndex === null || body.dayIndex === '' || body.dayIndex === 0
+            ? null
+            : typeof body.dayIndex === 'number' && body.dayIndex > 0
+              ? body.dayIndex
+              : row.day_index;
+
+    const nextProvider =
+        body.provider === null
+            ? null
+            : typeof body.provider === 'string'
+              ? body.provider.trim() || null
+              : row.provider;
+
+    const nextReservationNumber =
+        body.reservationNumber === null
+            ? null
+            : typeof body.reservationNumber === 'string'
+              ? body.reservationNumber.trim() || null
+              : row.reservation_number;
+
+    const nextMemo =
+        body.memo === null
+            ? null
+            : typeof body.memo === 'string'
+              ? body.memo.trim() || null
+              : row.memo;
+
+    const nextExternalUrl =
+        row.storage_type === 'link' && typeof body.externalUrl === 'string' && body.externalUrl.trim()
+            ? body.externalUrl.trim()
+            : row.external_url;
+
     await db
-        .prepare('UPDATE travel_files SET visibility = ? WHERE id = ?')
-        .bind(nextVisibility, fileId)
+        .prepare(
+            `UPDATE travel_files
+             SET title = ?, category = ?, day_index = ?, provider = ?, reservation_number = ?, memo = ?, external_url = ?, visibility = ?
+             WHERE id = ?`,
+        )
+        .bind(
+            nextTitle,
+            nextCategory,
+            nextDayIndex,
+            nextProvider,
+            nextReservationNumber,
+            nextMemo,
+            nextExternalUrl,
+            nextVisibility,
+            fileId,
+        )
         .run();
 
-    return new Response(JSON.stringify({ success: true, visibility: nextVisibility }), {
-        headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+        JSON.stringify({
+            success: true,
+            file: {
+                id: String(row.id),
+                travelId: String(row.travel_id),
+                category: nextCategory,
+                title: nextTitle,
+                reservationNumber: nextReservationNumber || undefined,
+                provider: nextProvider || undefined,
+                storageType: row.storage_type,
+                externalUrl: nextExternalUrl || undefined,
+                fileName: row.file_name || undefined,
+                mimeType: row.mime_type || undefined,
+                fileSize: typeof row.file_size === 'number' ? row.file_size : undefined,
+                visibility: nextVisibility,
+                dayIndex: typeof nextDayIndex === 'number' ? nextDayIndex : undefined,
+                memo: nextMemo || undefined,
+                createdAt: String(row.created_at),
+                canDelete: resolved.isOwner || row.uploader_id === userId,
+            },
+        }),
+        {
+            headers: { 'Content-Type': 'application/json' },
+        },
+    );
 }
 
 export async function onRequestDelete(context: any) {

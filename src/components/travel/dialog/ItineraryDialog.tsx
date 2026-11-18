@@ -37,7 +37,6 @@ const ItineraryDialog: React.FC<Props> = (props) => {
 const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, editTarget, defaultData }) => {
     const { travels, participants, addItinerary, updateItinerary } = useTravelStore();
     const travel = travels.find((t) => t.id === travelId);
-    const { handleDragStart, modalStyle } = useDialog(isOpen, onClose);
 
     const totalDays = travel ? differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1 : 1;
 
@@ -71,6 +70,49 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
         }));
     });
     const [isCalculating, setIsCalculating] = useState(false);
+
+    const isDirty = (() => {
+        const initType = initial?.type || '';
+        const initDay = initial?.dayIndex ?? '';
+        const initTime = initial?.time || '';
+        const initEndTime = initial?.endTime || '';
+        const initContent = initial?.content || '';
+        const initAddress = initial?.address || '';
+        const initArrival = initial?.arrivalAddress || '';
+        const initDesc = initial?.description || '';
+        const initTransport = initial?.transportMode || '';
+        const initCosts = initial
+            ? getItineraryCosts({
+                  id: initial.id || 'draft',
+                  content: initial.content || '',
+                  costs: initial.costs,
+                  costAmount: initial.costAmount,
+                  costCurrency: initial.costCurrency,
+                  paidBy: initial.paidBy,
+              }).map((c) => ({
+                  id: c.id,
+                  title: c.title,
+                  amount: String(c.amount),
+                  currency: c.currency,
+                  paidBy: c.paidBy || '',
+              }))
+            : [];
+
+        return (
+            type !== initType ||
+            dayIndex !== initDay ||
+            time !== initTime ||
+            endTime !== initEndTime ||
+            content !== initContent ||
+            address !== initAddress ||
+            arrivalAddress !== initArrival ||
+            description !== initDesc ||
+            transportMode !== initTransport ||
+            JSON.stringify(costs) !== JSON.stringify(initCosts)
+        );
+    })();
+
+    const { handleDragStart, modalStyle, requestClose } = useDialog(isOpen, onClose, { isDirty });
 
     const routesLib = useMapsLibrary('routes');
     const geocodingLib = useMapsLibrary('geocoding');
@@ -187,20 +229,6 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
         }
     };
 
-    const handleClose = () => {
-        if (!editTarget) {
-            setType('');
-            setDayIndex('');
-            setTime('');
-            setEndTime('');
-            setContent('');
-            setAddress('');
-            setArrivalAddress('');
-            setDescription('');
-        }
-        onClose();
-    };
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[1px] p-3 sm:p-4">
             <div
@@ -216,7 +244,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                     <h3 className="font-bold text-lg">{editTarget ? '일정 수정' : '새 일정 추가'}</h3>
                     <button
                         type="button"
-                        onClick={handleClose}
+                        onClick={requestClose}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
                     >
                         <X size={20} />
@@ -534,7 +562,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                     <div className="shrink-0 px-4 sm:px-5 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/80 flex flex-wrap justify-end gap-2">
                         <button
                             type="button"
-                            onClick={handleClose}
+                            onClick={requestClose}
                             className="px-4 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors"
                         >
                             취소

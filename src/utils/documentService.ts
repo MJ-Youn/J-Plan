@@ -218,8 +218,86 @@ export async function updateDocumentVisibility(params: {
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || '공개 범위 변경에 실패했습니다.');
+        throw new Error(err.error || '권한 설정 변경에 실패했습니다.');
     }
+}
+
+/**
+ * 업로드된 서류의 메타데이터(이름, 카테고리, 일차, 업체명, 예약번호, 메모, 공개범위 등)를 수정합니다.
+ */
+export async function updateTravelDocument(params: {
+    travelId: string;
+    fileId: string;
+    ownerId?: string;
+    title: string;
+    category: DocumentCategory;
+    dayIndex?: number | null;
+    provider?: string;
+    reservationNumber?: string;
+    memo?: string;
+    externalUrl?: string;
+    visibility: DocumentVisibility;
+}): Promise<TravelDocument> {
+    const {
+        travelId,
+        fileId,
+        ownerId,
+        title,
+        category,
+        dayIndex,
+        provider,
+        reservationNumber,
+        memo,
+        externalUrl,
+        visibility,
+    } = params;
+
+    if (import.meta.env.DEV) {
+        let updatedDoc: TravelDocument | undefined;
+        const docs = readDevDocs(travelId).map((d) => {
+            if (d.id !== fileId) return d;
+            updatedDoc = {
+                ...d,
+                title: title.trim() || d.title,
+                category,
+                dayIndex: dayIndex && dayIndex > 0 ? dayIndex : undefined,
+                provider: provider?.trim() || undefined,
+                reservationNumber: reservationNumber?.trim() || undefined,
+                memo: memo?.trim() || undefined,
+                externalUrl: d.storageType === 'link' && externalUrl?.trim() ? externalUrl.trim() : d.externalUrl,
+                visibility,
+            };
+            return updatedDoc;
+        });
+        writeDevDocs(travelId, docs);
+        if (!updatedDoc) throw new Error('서류를 찾을 수 없습니다.');
+        return updatedDoc;
+    }
+
+    const url = ownerId
+        ? `/api/data/travels/${travelId}/files/${fileId}?ownerId=${encodeURIComponent(ownerId)}`
+        : `/api/data/travels/${travelId}/files/${fileId}`;
+
+    const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            title: title.trim(),
+            category,
+            dayIndex: dayIndex && dayIndex > 0 ? dayIndex : null,
+            provider: provider?.trim() || null,
+            reservationNumber: reservationNumber?.trim() || null,
+            memo: memo?.trim() || null,
+            externalUrl: externalUrl?.trim(),
+            visibility,
+        }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '서류 정보 수정에 실패했습니다.');
+    }
+    const data = await res.json();
+    return data.file as TravelDocument;
 }
 
 /**

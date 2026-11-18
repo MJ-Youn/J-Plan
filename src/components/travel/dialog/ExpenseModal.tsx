@@ -31,7 +31,6 @@ const CURRENCIES: ExpenseCurrency[] = ['KRW', 'JPY', 'USD', 'EUR', 'TWD', 'THB',
  * @since 2026. 11. 17.
  */
 const ExpenseModal: React.FC<ExpenseModalProps> = (props) => {
-    useEscapeKey(props.isOpen, props.onClose);
     if (!props.isOpen) return null;
     return <ExpenseModalContent {...props} />;
 };
@@ -54,6 +53,10 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     const [newParticipant, setNewParticipant] = useState('');
     const [filterDay, setFilterDay] = useState<number | 'ALL'>('ALL');
     const [isSaving, setIsSaving] = useState(false);
+
+    useEscapeKey(true, onClose, {
+        isDirty: Boolean(title.trim() || amount.trim() || newParticipant.trim()),
+    });
 
     useEffect(() => {
         let cancelled = false;

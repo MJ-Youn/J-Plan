@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     X,
     FolderLock,
@@ -19,8 +19,13 @@ import {
     Shield,
     QrCode,
     FileText,
+    Edit2,
+    ArrowUp,
+    ArrowDown,
+    Layers,
 } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 import type { DocumentCategory, DocumentVisibility, Travel, TravelDocument } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 import { copyToClipboard } from '../../../utils/clipboard';
@@ -30,8 +35,10 @@ import {
     fetchDocumentBlobUrl,
     fetchTravelDocuments,
     updateDocumentVisibility,
+    updateTravelDocument,
     uploadTravelDocumentFile,
 } from '../../../utils/documentService';
+import { inferDocumentMetaFromFilename, mergeFilesToPdf } from '../../../utils/pdfMerger';
 
 interface DocumentsModalProps {
     isOpen: boolean;
@@ -74,7 +81,6 @@ function getCategoryIcon(category: DocumentCategory) {
  * @since 2026. 11. 17.
  */
 const DocumentsModal: React.FC<DocumentsModalProps> = (props) => {
-    useEscapeKey(props.isOpen, props.onClose);
     if (!props.isOpen) return null;
     return <DocumentsModalContent {...props} />;
 };
@@ -104,9 +110,44 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
     const [dayIndex, setDayIndex] = useState<number | ''>('');
     const [visibility, setVisibility] = useState<DocumentVisibility>('collaborators');
     const [memo, setMemo] = useState('');
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [queuedFiles, setQueuedFiles] = useState<
+        Array<{
+            id: string;
+            file: File;
+            title: string;
+            category: DocumentCategory;
+            dayIndex: number | '';
+        }>
+    >([]);
+    const [multiUploadMode, setMultiUploadMode] = useState<'merge' | 'batch'>('merge');
+    const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+    const [isDraggingFiles, setIsDraggingFiles] = useState(false);
     const [externalUrl, setExternalUrl] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // 수정 모달 상태
+    const [editingDoc, setEditingDoc] = useState<TravelDocument | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editCategory, setEditCategory] = useState<DocumentCategory>('기타');
+    const [editDayIndex, setEditDayIndex] = useState<number | ''>('');
+    const [editProvider, setEditProvider] = useState('');
+    const [editResNo, setEditResNo] = useState('');
+    const [editMemo, setEditMemo] = useState('');
+    const [editUrl, setEditUrl] = useState('');
+    const [editVisibility, setEditVisibility] = useState<DocumentVisibility>('collaborators');
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    const isDirty =
+        Boolean(editingDoc) ||
+        (isAdding &&
+            (queuedFiles.length > 0 ||
+                Boolean(
+                    title.trim() ||
+                        provider.trim() ||
+                        reservationNumber.trim() ||
+                        memo.trim() ||
+                        externalUrl.trim(),
+                )));
 
     // 인앱 미리보기 상태
     const [previewTarget, setPreviewTarget] = useState<{
@@ -115,6 +156,17 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
         mimeType: string;
     } | null>(null);
     const [loadingFileId, setLoadingFileId] = useState<string | null>(null);
+
+    const { requestClose } = useEscapeKey(
+        true,
+        () => {
+            if (previewTarget?.blobUrl) {
+                URL.revokeObjectURL(previewTarget.blobUrl);
+            }
+            onClose();
+        },
+        { isDirty },
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -162,34 +214,110 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
         }
     };
 
+    const handleFilesSelected = (fileList: FileList | File[]) => {
+        const arr = Array.from(fileList).filter(
+            (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf') || f.type.startsWith('image/'),
+        );
+        if (arr.length === 0) return;
+
+        const mapped = arr.map((file) => {
+            const inferred = inferDocumentMetaFromFilename(file.name, travel.startDate, totalDays);
+            return {
+                id: uuidv4(),
+                file,
+                title: inferred.title,
+                category: inferred.category || category,
+                dayIndex: inferred.dayIndex ?? dayIndex,
+            };
+        });
+
+        setQueuedFiles((prev) => [...prev, ...mapped]);
+
+        // 첫 파일 추가 시 상단 기본 폼에도 스마트 추론값 자동 반영
+        if (queuedFiles.length === 0 && mapped.length > 0) {
+            const firstInferred = inferDocumentMetaFromFilename(arr[0].name, travel.startDate, totalDays);
+            if (!title.trim()) {
+                setTitle(arr.length > 1 ? `${firstInferred.title} 외 ${arr.length - 1}건` : firstInferred.title);
+            }
+            if (firstInferred.category) setCategory(firstInferred.category);
+            if (firstInferred.dayIndex && !dayIndex) setDayIndex(firstInferred.dayIndex);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMsg(null);
         setIsSubmitting(true);
+        setUploadProgress(null);
 
         try {
-            let created: TravelDocument;
             if (addMode === 'r2') {
-                if (!selectedFile) {
+                if (queuedFiles.length === 0) {
                     throw new Error('업로드할 PDF 또는 이미지 파일을 선택해 주세요.');
                 }
-                created = await uploadTravelDocumentFile({
-                    travelId: travel.id,
-                    ownerId: travel.ownerId,
-                    file: selectedFile,
-                    category,
-                    title: title || selectedFile.name,
-                    reservationNumber,
-                    provider,
-                    visibility,
-                    dayIndex: dayIndex ? Number(dayIndex) : undefined,
-                    memo,
-                });
+
+                if (queuedFiles.length === 1) {
+                    const only = queuedFiles[0];
+                    const created = await uploadTravelDocumentFile({
+                        travelId: travel.id,
+                        ownerId: travel.ownerId,
+                        file: only.file,
+                        category,
+                        title: title.trim() || only.title,
+                        reservationNumber,
+                        provider,
+                        visibility,
+                        dayIndex: dayIndex ? Number(dayIndex) : undefined,
+                        memo,
+                    });
+                    setDocs((prev) => [created, ...prev]);
+                } else if (multiUploadMode === 'merge') {
+                    setUploadProgress(`PDF ${queuedFiles.length}개 파일 병합 중...`);
+                    const mergedTitle = title.trim() || queuedFiles[0].title || '통합 서류';
+                    const mergedPdf = await mergeFilesToPdf(
+                        queuedFiles.map((q) => q.file),
+                        mergedTitle,
+                    );
+                    setUploadProgress('암호화 업로드 중...');
+                    const created = await uploadTravelDocumentFile({
+                        travelId: travel.id,
+                        ownerId: travel.ownerId,
+                        file: mergedPdf,
+                        category,
+                        title: mergedTitle,
+                        reservationNumber,
+                        provider,
+                        visibility,
+                        dayIndex: dayIndex ? Number(dayIndex) : undefined,
+                        memo,
+                    });
+                    setDocs((prev) => [created, ...prev]);
+                } else {
+                    const uploaded: TravelDocument[] = [];
+                    for (let i = 0; i < queuedFiles.length; i++) {
+                        const q = queuedFiles[i];
+                        setUploadProgress(`일괄 업로드 중 (${i + 1}/${queuedFiles.length})...`);
+                        const created = await uploadTravelDocumentFile({
+                            travelId: travel.id,
+                            ownerId: travel.ownerId,
+                            file: q.file,
+                            category: q.category,
+                            title: q.title.trim() || q.file.name,
+                            reservationNumber,
+                            provider,
+                            visibility,
+                            dayIndex: q.dayIndex ? Number(q.dayIndex) : undefined,
+                            memo,
+                        });
+                        uploaded.push(created);
+                    }
+                    setDocs((prev) => [...uploaded.reverse(), ...prev]);
+                }
             } else {
                 if (!title.trim() || !externalUrl.trim()) {
                     throw new Error('문서 제목과 Google Drive(또는 외부) 링크를 입력해 주세요.');
                 }
-                created = await addTravelDocumentLink({
+                const created = await addTravelDocumentLink({
                     travelId: travel.id,
                     ownerId: travel.ownerId,
                     externalUrl,
@@ -201,21 +329,62 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                     dayIndex: dayIndex ? Number(dayIndex) : undefined,
                     memo,
                 });
+                setDocs((prev) => [created, ...prev]);
             }
 
-            setDocs((prev) => [created, ...prev]);
             setIsAdding(false);
             setTitle('');
             setProvider('');
             setReservationNumber('');
             setDayIndex('');
             setMemo('');
-            setSelectedFile(null);
+            setQueuedFiles([]);
             setExternalUrl('');
         } catch (err) {
             setErrorMsg((err as Error).message);
         } finally {
             setIsSubmitting(false);
+            setUploadProgress(null);
+        }
+    };
+
+    const openEditModal = (doc: TravelDocument) => {
+        setEditingDoc(doc);
+        setEditTitle(doc.title);
+        setEditCategory(doc.category);
+        setEditDayIndex(doc.dayIndex ?? '');
+        setEditProvider(doc.provider || '');
+        setEditResNo(doc.reservationNumber || '');
+        setEditMemo(doc.memo || '');
+        setEditUrl(doc.externalUrl || '');
+        setEditVisibility(doc.visibility);
+    };
+
+    const handleSaveEdit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingDoc || !editTitle.trim()) return;
+        setIsSavingEdit(true);
+        setErrorMsg(null);
+        try {
+            const updated = await updateTravelDocument({
+                travelId: travel.id,
+                fileId: editingDoc.id,
+                ownerId: travel.ownerId,
+                title: editTitle.trim(),
+                category: editCategory,
+                dayIndex: editDayIndex ? Number(editDayIndex) : null,
+                provider: editProvider,
+                reservationNumber: editResNo,
+                memo: editMemo,
+                externalUrl: editingDoc.storageType === 'link' ? editUrl : undefined,
+                visibility: editVisibility,
+            });
+            setDocs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+            setEditingDoc(null);
+        } catch (err) {
+            setErrorMsg((err as Error).message);
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
@@ -291,12 +460,51 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
         }
     };
 
-    const filteredDocs = docs.filter((d) => {
-        if (filterCat !== 'ALL' && d.category !== filterCat) return false;
-        if (filterDay === 'COMMON' && Boolean(d.dayIndex)) return false;
-        if (typeof filterDay === 'number' && d.dayIndex !== filterDay) return false;
-        return true;
-    });
+    const filteredDocs = useMemo(
+        () =>
+            docs.filter((d) => {
+                if (filterCat !== 'ALL' && d.category !== filterCat) return false;
+                if (filterDay === 'COMMON' && Boolean(d.dayIndex)) return false;
+                if (typeof filterDay === 'number' && d.dayIndex !== filterDay) return false;
+                return true;
+            }),
+        [docs, filterCat, filterDay],
+    );
+
+    // 같은 일차 + 같은 업체/숙소명(provider)이 2건 이상이면 하나의 그룹 카드로 묶어 표시
+    const groupedEntries = useMemo(() => {
+        const providerCounts = new Map<string, number>();
+        filteredDocs.forEach((d) => {
+            const p = d.provider?.trim().toLowerCase();
+            if (!p) return;
+            const key = `${d.dayIndex ?? 'common'}::${p}`;
+            providerCounts.set(key, (providerCounts.get(key) || 0) + 1);
+        });
+
+        const result: Array<
+            | { kind: 'single'; doc: TravelDocument }
+            | { kind: 'group'; key: string; provider: string; dayIndex?: number; items: TravelDocument[] }
+        > = [];
+        const groupMap = new Map<string, { kind: 'group'; key: string; provider: string; dayIndex?: number; items: TravelDocument[] }>();
+
+        filteredDocs.forEach((d) => {
+            const p = d.provider?.trim();
+            const key = p ? `${d.dayIndex ?? 'common'}::${p.toLowerCase()}` : '';
+            if (key && (providerCounts.get(key) || 0) >= 2) {
+                let grp = groupMap.get(key);
+                if (!grp) {
+                    grp = { kind: 'group', key, provider: p!, dayIndex: d.dayIndex, items: [] };
+                    groupMap.set(key, grp);
+                    result.push(grp);
+                }
+                grp.items.push(d);
+            } else {
+                result.push({ kind: 'single', doc: d });
+            }
+        });
+
+        return result;
+    }, [filteredDocs]);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
@@ -325,10 +533,7 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                         )}
                         <button
                             type="button"
-                            onClick={() => {
-                                closePreview();
-                                onClose();
-                            }}
+                            onClick={requestClose}
                             className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 shrink-0"
                         >
                             <X size={20} />
@@ -419,20 +624,220 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                             </div>
 
                             {addMode === 'r2' ? (
-                                <div className="text-xs">
-                                    <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">파일 선택 * (PDF, JPG, PNG, WEBP · 최대 10MB)</label>
-                                    <input
-                                        type="file"
-                                        accept=".pdf,image/jpeg,image/png,image/webp"
-                                        onChange={(e) => {
-                                            const f = e.target.files?.[0] || null;
-                                            setSelectedFile(f);
-                                            if (f && !title) {
-                                                setTitle(f.name.replace(/\.[^/.]+$/, ''));
+                                <div className="space-y-2.5 text-xs">
+                                    <label className="block font-semibold text-gray-700 dark:text-gray-300">
+                                        파일 선택 * (여러 PDF·이미지 동시 선택 / 드래그 앤 드롭 가능 · 파일당 최대 10MB)
+                                    </label>
+                                    <div
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            setIsDraggingFiles(true);
+                                        }}
+                                        onDragLeave={() => setIsDraggingFiles(false)}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            setIsDraggingFiles(false);
+                                            if (e.dataTransfer.files?.length) {
+                                                handleFilesSelected(e.dataTransfer.files);
                                             }
                                         }}
-                                        className="w-full p-2 rounded-lg bg-white dark:bg-zinc-900 border border-dashed border-indigo-300 dark:border-indigo-700 text-xs"
-                                    />
+                                        className={`p-3 rounded-xl border-2 border-dashed transition-colors ${
+                                            isDraggingFiles
+                                                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                                                : 'border-indigo-300 dark:border-indigo-700 bg-white dark:bg-zinc-900'
+                                        }`}
+                                    >
+                                        <input
+                                            type="file"
+                                            multiple
+                                            accept=".pdf,image/jpeg,image/png,image/webp"
+                                            onChange={(e) => {
+                                                if (e.target.files?.length) {
+                                                    handleFilesSelected(e.target.files);
+                                                }
+                                                e.target.value = '';
+                                            }}
+                                            className="w-full text-xs"
+                                        />
+                                        <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                            파일명(보험, 항공, 호텔, 일차 등)을 분석해 카테고리와 일차를 자동으로 추천합니다.
+                                        </p>
+                                    </div>
+
+                                    {queuedFiles.length > 0 && (
+                                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800/70 space-y-2.5">
+                                            {queuedFiles.length > 1 && (
+                                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100 dark:border-zinc-800">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setMultiUploadMode('merge')}
+                                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                                                                multiUploadMode === 'merge'
+                                                                    ? 'bg-indigo-600 text-white'
+                                                                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300'
+                                                            }`}
+                                                        >
+                                                            📄 하나의 PDF로 합쳐서 올리기 ({queuedFiles.length}개)
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setMultiUploadMode('batch')}
+                                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                                                                multiUploadMode === 'batch'
+                                                                    ? 'bg-indigo-600 text-white'
+                                                                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300'
+                                                            }`}
+                                                        >
+                                                            📚 개별 파일 한 번에 올리기 ({queuedFiles.length}건)
+                                                        </button>
+                                                    </div>
+                                                    {multiUploadMode === 'batch' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setQueuedFiles((prev) =>
+                                                                    prev.map((q) => ({
+                                                                        ...q,
+                                                                        category,
+                                                                        dayIndex,
+                                                                    })),
+                                                                )
+                                                            }
+                                                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                                        >
+                                                            상단 카테고리·일차 일괄 적용
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                                                {queuedFiles.map((q, idx) => (
+                                                    <div
+                                                        key={q.id}
+                                                        className="flex flex-col sm:flex-row sm:items-center gap-1.5 p-2 rounded-lg bg-gray-50 dark:bg-zinc-950/60 border border-gray-200 dark:border-zinc-800"
+                                                    >
+                                                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 w-5 shrink-0">
+                                                            {idx + 1}.
+                                                        </span>
+                                                        {queuedFiles.length > 1 && multiUploadMode === 'batch' ? (
+                                                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-1.5 min-w-0">
+                                                                <input
+                                                                    type="text"
+                                                                    value={q.title}
+                                                                    onChange={(e) =>
+                                                                        setQueuedFiles((prev) =>
+                                                                            prev.map((item) =>
+                                                                                item.id === q.id ? { ...item, title: e.target.value } : item,
+                                                                            ),
+                                                                        )
+                                                                    }
+                                                                    className="sm:col-span-6 px-2 py-1 text-[11px] rounded bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                                />
+                                                                <select
+                                                                    value={q.category}
+                                                                    onChange={(e) =>
+                                                                        setQueuedFiles((prev) =>
+                                                                            prev.map((item) =>
+                                                                                item.id === q.id
+                                                                                    ? { ...item, category: e.target.value as DocumentCategory }
+                                                                                    : item,
+                                                                            ),
+                                                                        )
+                                                                    }
+                                                                    className="sm:col-span-3 px-1.5 py-1 text-[11px] rounded bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                                >
+                                                                    {CATEGORIES.map((c) => (
+                                                                        <option key={c} value={c}>
+                                                                            {c}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <select
+                                                                    value={q.dayIndex}
+                                                                    onChange={(e) =>
+                                                                        setQueuedFiles((prev) =>
+                                                                            prev.map((item) =>
+                                                                                item.id === q.id
+                                                                                    ? {
+                                                                                          ...item,
+                                                                                          dayIndex: e.target.value ? Number(e.target.value) : '',
+                                                                                      }
+                                                                                    : item,
+                                                                            ),
+                                                                        )
+                                                                    }
+                                                                    className="sm:col-span-3 px-1.5 py-1 text-[11px] rounded bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                                >
+                                                                    <option value="">공통</option>
+                                                                    {Array.from({ length: totalDays }, (_, i) => (
+                                                                        <option key={i + 1} value={i + 1}>
+                                                                            {i + 1}일차
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                                                                <span className="truncate text-[11px] font-medium text-gray-800 dark:text-gray-200">
+                                                                    {q.file.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-400 shrink-0">
+                                                                    {(q.file.size / 1024).toFixed(0)} KB
+                                                                </span>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex items-center gap-1 shrink-0 justify-end">
+                                                            {queuedFiles.length > 1 && multiUploadMode === 'merge' && (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={idx === 0}
+                                                                        onClick={() =>
+                                                                            setQueuedFiles((prev) => {
+                                                                                const next = [...prev];
+                                                                                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                                                                return next;
+                                                                            })
+                                                                        }
+                                                                        className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                                                                        title="위로"
+                                                                    >
+                                                                        <ArrowUp size={12} />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={idx === queuedFiles.length - 1}
+                                                                        onClick={() =>
+                                                                            setQueuedFiles((prev) => {
+                                                                                const next = [...prev];
+                                                                                [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                                                                return next;
+                                                                            })
+                                                                        }
+                                                                        className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                                                                        title="아래로"
+                                                                    >
+                                                                        <ArrowDown size={12} />
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setQueuedFiles((prev) => prev.filter((item) => item.id !== q.id))}
+                                                                className="p-1 text-gray-400 hover:text-red-500"
+                                                                title="대기열에서 제거"
+                                                            >
+                                                                <X size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="text-xs">
@@ -510,7 +915,12 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-2 pt-1">
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                                {uploadProgress && (
+                                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mr-auto">
+                                        {uploadProgress}
+                                    </span>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => setIsAdding(false)}
@@ -524,7 +934,13 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                                     className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
                                 >
                                     {isSubmitting && <Loader2 size={13} className="animate-spin" />}
-                                    <span>저장하기</span>
+                                    <span>
+                                        {queuedFiles.length > 1
+                                            ? multiUploadMode === 'merge'
+                                                ? 'PDF 합쳐서 저장'
+                                                : `${queuedFiles.length}건 일괄 저장`
+                                            : '저장하기'}
+                                    </span>
                                 </button>
                             </div>
                         </form>
@@ -618,113 +1034,291 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                         </div>
                     ) : (
                         <div className="space-y-2.5">
-                            {filteredDocs.map((doc) => (
-                                <div
-                                    key={doc.id}
-                                    className="p-3.5 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-gray-50/70 dark:bg-zinc-950/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                                >
-                                    <div className="min-w-0 space-y-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-                                                {getCategoryIcon(doc.category)}
-                                                {doc.category}
-                                            </span>
-                                            {doc.dayIndex && (
-                                                <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                                    {doc.dayIndex}일차
+                            {groupedEntries.map((entry) => {
+                                const renderDocCard = (doc: TravelDocument, nested = false) => (
+                                    <div
+                                        key={doc.id}
+                                        className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                            nested
+                                                ? 'border-gray-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900'
+                                                : 'border-gray-200 dark:border-zinc-800 bg-gray-50/70 dark:bg-zinc-950/50'
+                                        }`}
+                                    >
+                                        <div className="min-w-0 space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
+                                                    {getCategoryIcon(doc.category)}
+                                                    {doc.category}
+                                                </span>
+                                                {doc.dayIndex && (
+                                                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                                        {doc.dayIndex}일차
+                                                    </span>
+                                                )}
+                                                <span className="font-bold text-sm text-gray-900 dark:text-gray-100 truncate">{doc.title}</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400">
+                                                {doc.provider && <span>업체: {doc.provider}</span>}
+                                                {doc.reservationNumber && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyResNo(doc)}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-mono font-semibold hover:bg-indigo-100 transition-colors"
+                                                        title="예약번호 복사"
+                                                    >
+                                                        <span>#{doc.reservationNumber}</span>
+                                                        {copiedId === doc.id ? <Check size={11} /> : <Copy size={11} />}
+                                                    </button>
+                                                )}
+                                                {doc.storageType === 'r2' && doc.fileSize && (
+                                                    <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>
+                                                )}
+                                            </div>
+                                            {doc.memo && <p className="text-xs text-gray-600 dark:text-gray-400">{doc.memo}</p>}
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                            {canEdit && doc.canDelete ? (
+                                                <select
+                                                    value={doc.visibility}
+                                                    onChange={(e) => handleVisibilityChange(doc, e.target.value as DocumentVisibility)}
+                                                    className="w-36 px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                >
+                                                    <option value="owner_only">{VISIBILITY_LABELS.owner_only}</option>
+                                                    <option value="collaborators">{VISIBILITY_LABELS.collaborators}</option>
+                                                    <option value="all_shared">{VISIBILITY_LABELS.all_shared}</option>
+                                                </select>
+                                            ) : (
+                                                <span className="w-36 text-center px-2 py-1.5 text-[11px] rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-500">
+                                                    {VISIBILITY_LABELS[doc.visibility]}
                                                 </span>
                                             )}
-                                            <span className="font-bold text-sm text-gray-900 dark:text-gray-100 truncate">{doc.title}</span>
-                                        </div>
 
-                                        <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400">
-                                            {doc.provider && <span>업체: {doc.provider}</span>}
-                                            {doc.reservationNumber && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCopyResNo(doc)}
-                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-mono font-semibold hover:bg-indigo-100 transition-colors"
-                                                    title="예약번호 복사"
-                                                >
-                                                    <span>#{doc.reservationNumber}</span>
-                                                    {copiedId === doc.id ? <Check size={11} /> : <Copy size={11} />}
-                                                </button>
+                                            {doc.storageType === 'link' ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handlePreview(doc)}
+                                                        className="w-[88px] flex items-center justify-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                        <span>링크 열기</span>
+                                                    </button>
+                                                    <span className="w-7 h-7 shrink-0" aria-hidden="true" />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        disabled={loadingFileId === doc.id}
+                                                        onClick={() => handlePreview(doc)}
+                                                        className="w-[88px] flex items-center justify-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 whitespace-nowrap"
+                                                    >
+                                                        {loadingFileId === doc.id ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
+                                                        <span>보기</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={loadingFileId === doc.id}
+                                                        onClick={() => handleDownload(doc)}
+                                                        className="w-7 h-7 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+                                                        title="다운로드"
+                                                    >
+                                                        <Download size={14} />
+                                                    </button>
+                                                </>
                                             )}
-                                            {doc.storageType === 'r2' && doc.fileSize && (
-                                                <span>{(doc.fileSize / 1024).toFixed(0)} KB</span>
+
+                                            {canEdit && doc.canDelete && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openEditModal(doc)}
+                                                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors shrink-0"
+                                                        title="서류 정보 수정"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDelete(doc)}
+                                                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+                                                        title="삭제"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
-                                        {doc.memo && <p className="text-xs text-gray-600 dark:text-gray-400">{doc.memo}</p>}
                                     </div>
+                                );
 
-                                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                                        {canEdit && doc.canDelete ? (
-                                            <select
-                                                value={doc.visibility}
-                                                onChange={(e) => handleVisibilityChange(doc, e.target.value as DocumentVisibility)}
-                                                className="w-36 px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
-                                            >
-                                                <option value="owner_only">{VISIBILITY_LABELS.owner_only}</option>
-                                                <option value="collaborators">{VISIBILITY_LABELS.collaborators}</option>
-                                                <option value="all_shared">{VISIBILITY_LABELS.all_shared}</option>
-                                            </select>
-                                        ) : (
-                                            <span className="w-36 text-center px-2 py-1.5 text-[11px] rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-500">
-                                                {VISIBILITY_LABELS[doc.visibility]}
+                                if (entry.kind === 'single') {
+                                    return renderDocCard(entry.doc, false);
+                                }
+
+                                return (
+                                    <div
+                                        key={entry.key}
+                                        className="p-3 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2"
+                                    >
+                                        <div className="flex items-center justify-between gap-2 px-1">
+                                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                                                <Layers size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                                {entry.dayIndex && <span>{entry.dayIndex}일차 ·</span>}
+                                                <span>{entry.provider}</span>
+                                            </div>
+                                            <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-zinc-900 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                                                {entry.items.length}개 묶음
                                             </span>
-                                        )}
-
-                                        {doc.storageType === 'link' ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handlePreview(doc)}
-                                                    className="w-[88px] flex items-center justify-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
-                                                >
-                                                    <ExternalLink size={12} />
-                                                    <span>링크 열기</span>
-                                                </button>
-                                                <span className="w-7 h-7 shrink-0" aria-hidden="true" />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    disabled={loadingFileId === doc.id}
-                                                    onClick={() => handlePreview(doc)}
-                                                    className="w-[88px] flex items-center justify-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 whitespace-nowrap"
-                                                >
-                                                    {loadingFileId === doc.id ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
-                                                    <span>보기</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={loadingFileId === doc.id}
-                                                    onClick={() => handleDownload(doc)}
-                                                    className="w-7 h-7 flex items-center justify-center bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
-                                                    title="다운로드"
-                                                >
-                                                    <Download size={14} />
-                                                </button>
-                                            </>
-                                        )}
-
-                                        {canEdit && doc.canDelete && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDelete(doc)}
-                                                className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
-                                                title="삭제"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
+                                        </div>
+                                        <div className="space-y-2">{entry.items.map((d) => renderDocCard(d, true))}</div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
+
+                {/* 서류 정보 수정 오버레이 */}
+                {editingDoc && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+                        <form
+                            onSubmit={handleSaveEdit}
+                            className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-lg border border-gray-200 dark:border-zinc-800 shadow-2xl overflow-hidden flex flex-col"
+                        >
+                            <div className="px-5 py-3.5 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between">
+                                <h4 className="font-bold text-sm text-gray-900 dark:text-gray-100">서류 정보 수정</h4>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingDoc(null)}
+                                    className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="p-4 sm:p-5 space-y-3 text-xs overflow-y-auto max-h-[75vh]">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">카테고리</label>
+                                        <select
+                                            value={editCategory}
+                                            onChange={(e) => setEditCategory(e.target.value as DocumentCategory)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        >
+                                            {CATEGORIES.map((c) => (
+                                                <option key={c} value={c}>
+                                                    {c}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">서류명 *</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {editingDoc.storageType === 'link' && (
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">외부 링크 URL *</label>
+                                        <input
+                                            type="url"
+                                            required
+                                            value={editUrl}
+                                            onChange={(e) => setEditUrl(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">예약번호 / PNR</label>
+                                        <input
+                                            type="text"
+                                            value={editResNo}
+                                            onChange={(e) => setEditResNo(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">예약처 / 업체 (묶음 기준)</label>
+                                        <input
+                                            type="text"
+                                            value={editProvider}
+                                            onChange={(e) => setEditProvider(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">연결 일차</label>
+                                        <select
+                                            value={editDayIndex}
+                                            onChange={(e) => setEditDayIndex(e.target.value ? Number(e.target.value) : '')}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        >
+                                            <option value="">전체 일정 공통</option>
+                                            {Array.from({ length: totalDays }, (_, i) => (
+                                                <option key={i + 1} value={i + 1}>
+                                                    {i + 1}일차
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">공유/공개 범위</label>
+                                        <select
+                                            value={editVisibility}
+                                            onChange={(e) => setEditVisibility(e.target.value as DocumentVisibility)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        >
+                                            <option value="owner_only">{VISIBILITY_LABELS.owner_only}</option>
+                                            <option value="collaborators">{VISIBILITY_LABELS.collaborators}</option>
+                                            <option value="all_shared">{VISIBILITY_LABELS.all_shared}</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block font-semibold mb-1 text-gray-700 dark:text-gray-300">메모</label>
+                                        <input
+                                            type="text"
+                                            value={editMemo}
+                                            onChange={(e) => setEditMemo(e.target.value)}
+                                            className="w-full p-2 rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-700 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="px-5 py-3 border-t border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingDoc(null)}
+                                    className="px-3.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-zinc-800 rounded-lg"
+                                >
+                                    취소
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingEdit}
+                                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
+                                >
+                                    {isSavingEdit && <Loader2 size={13} className="animate-spin" />}
+                                    <span>수정 저장</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
 
                 {/* 인앱 파일 미리보기 오버레이 */}
                 {previewTarget && (

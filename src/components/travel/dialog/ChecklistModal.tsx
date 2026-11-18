@@ -59,7 +59,6 @@ const DOMESTIC_TEMPLATE: Array<{ category: ChecklistCategory; title: string }> =
  * @since 2026. 11. 17.
  */
 const ChecklistModal: React.FC<ChecklistModalProps> = (props) => {
-    useEscapeKey(props.isOpen, props.onClose);
     if (!props.isOpen) return null;
     return <ChecklistModalContent {...props} />;
 };
@@ -82,6 +81,10 @@ const ChecklistModalContent: React.FC<ChecklistModalProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [previewTarget, setPreviewTarget] = useState<{ title: string; blobUrl: string; mimeType: string } | null>(null);
     const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
+
+    useEscapeKey(true, onClose, {
+        isDirty: Boolean(newTitle.trim() || newAssignee.trim()),
+    });
 
     useEffect(() => {
         let cancelled = false;
