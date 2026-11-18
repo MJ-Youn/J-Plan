@@ -112,7 +112,20 @@ export async function mergeFilesToPdf(files: File[], outputTitle: string): Promi
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
         if (isPdf) {
             const bytes = await file.arrayBuffer();
-            const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            let srcDoc: Awaited<ReturnType<typeof PDFDocument.load>>;
+            try {
+                // 암호화된 PDF를 ignoreEncryption으로 강제 로드하면 빈 페이지로 병합되므로 정상 복호화 가능 여부 확인
+                srcDoc = await PDFDocument.load(bytes);
+            } catch {
+                throw new Error(
+                    `"${file.name}" 파일은 암호화(비밀번호 또는 복사 제한)된 PDF여서 병합할 수 없습니다.\n'개별 파일 한 번에 올리기'를 사용하거나, 인쇄 → PDF로 저장 후 다시 시도해 주세요.`,
+                );
+            }
+            if (srcDoc.isEncrypted) {
+                throw new Error(
+                    `"${file.name}" 파일은 보안 설정이 적용된 PDF여서 병합 시 빈 페이지가 될 수 있습니다.\n'개별 파일 한 번에 올리기'를 사용해 주세요.`,
+                );
+            }
             const copiedPages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
             copiedPages.forEach((page) => mergedPdf.addPage(page));
             continue;
@@ -151,6 +164,6 @@ export async function mergeFilesToPdf(files: File[], outputTitle: string): Promi
 
     const pdfBytes = await mergedPdf.save();
     const safeName = (outputTitle.trim() || 'merged_documents').replace(/[\\/:*?"<>|]/g, '_');
-    const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+    const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
     return new File([blob], `${safeName}.pdf`, { type: 'application/pdf' });
 }

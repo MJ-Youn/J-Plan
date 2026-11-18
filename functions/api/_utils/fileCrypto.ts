@@ -6,7 +6,8 @@
  * @since 2026. 11. 17.
  */
 
-export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10MB 제한
+export const MAX_DOCUMENT_SIZE_MB = 25;
+export const MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024; // 25MB 제한
 
 export const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
     'application/pdf',
@@ -104,7 +105,7 @@ export function validateUploadedFile(file: File): { ok: true } | { ok: false; er
     if (file.size <= 0 || file.size > MAX_DOCUMENT_SIZE_BYTES) {
         return {
             ok: false,
-            error: '파일 크기는 10MB 이하여야 합니다.',
+            error: `파일 크기는 ${MAX_DOCUMENT_SIZE_MB}MB 이하여야 합니다.`,
         };
     }
     return { ok: true };

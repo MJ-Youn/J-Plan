@@ -34,6 +34,8 @@ import {
     deleteTravelDocument,
     fetchDocumentBlobUrl,
     fetchTravelDocuments,
+    MAX_DOCUMENT_SIZE_BYTES,
+    MAX_DOCUMENT_SIZE_MB,
     updateDocumentVisibility,
     updateTravelDocument,
     uploadTravelDocumentFile,
@@ -258,6 +260,11 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
 
                 if (queuedFiles.length === 1) {
                     const only = queuedFiles[0];
+                    if (only.file.size > MAX_DOCUMENT_SIZE_BYTES) {
+                        throw new Error(
+                            `"${only.file.name}" (${(only.file.size / (1024 * 1024)).toFixed(1)}MB)가 최대 업로드 용량(${MAX_DOCUMENT_SIZE_MB}MB)을 초과했습니다.`,
+                        );
+                    }
                     const created = await uploadTravelDocumentFile({
                         travelId: travel.id,
                         ownerId: travel.ownerId,
@@ -278,7 +285,12 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                         queuedFiles.map((q) => q.file),
                         mergedTitle,
                     );
-                    setUploadProgress('암호화 업로드 중...');
+                    if (mergedPdf.size > MAX_DOCUMENT_SIZE_BYTES) {
+                        throw new Error(
+                            `병합된 PDF 크기(${(mergedPdf.size / (1024 * 1024)).toFixed(1)}MB)가 최대 업로드 용량(${MAX_DOCUMENT_SIZE_MB}MB)을 초과했습니다.\n파일을 나누어 '개별 파일 한 번에 올리기'로 업로드해 주세요.`,
+                        );
+                    }
+                    setUploadProgress(`암호화 업로드 중 (${(mergedPdf.size / (1024 * 1024)).toFixed(1)}MB)...`);
                     const created = await uploadTravelDocumentFile({
                         travelId: travel.id,
                         ownerId: travel.ownerId,
@@ -293,6 +305,12 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                     });
                     setDocs((prev) => [created, ...prev]);
                 } else {
+                    const oversized = queuedFiles.find((q) => q.file.size > MAX_DOCUMENT_SIZE_BYTES);
+                    if (oversized) {
+                        throw new Error(
+                            `"${oversized.file.name}" (${(oversized.file.size / (1024 * 1024)).toFixed(1)}MB)가 최대 업로드 용량(${MAX_DOCUMENT_SIZE_MB}MB)을 초과했습니다.`,
+                        );
+                    }
                     const uploaded: TravelDocument[] = [];
                     for (let i = 0; i < queuedFiles.length; i++) {
                         const q = queuedFiles[i];
@@ -341,7 +359,9 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
             setQueuedFiles([]);
             setExternalUrl('');
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            const msg = (err as Error).message || '서류 저장 중 오류가 발생했습니다.';
+            setErrorMsg(msg);
+            window.alert(msg);
         } finally {
             setIsSubmitting(false);
             setUploadProgress(null);
@@ -382,7 +402,9 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
             setDocs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
             setEditingDoc(null);
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            const msg = (err as Error).message || '서류 저장 중 오류가 발생했습니다.';
+            setErrorMsg(msg);
+            window.alert(msg);
         } finally {
             setIsSavingEdit(false);
         }
@@ -404,7 +426,9 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
             });
             setPreviewTarget({ doc, blobUrl, mimeType: mimeType || doc.mimeType || 'application/pdf' });
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            const msg = (err as Error).message || '서류 저장 중 오류가 발생했습니다.';
+            setErrorMsg(msg);
+            window.alert(msg);
         } finally {
             setLoadingFileId(null);
         }
@@ -426,7 +450,9 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
             a.click();
             URL.revokeObjectURL(blobUrl);
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            const msg = (err as Error).message || '서류 저장 중 오류가 발생했습니다.';
+            setErrorMsg(msg);
+            window.alert(msg);
         } finally {
             setLoadingFileId(null);
         }
@@ -626,7 +652,7 @@ const DocumentsModalContent: React.FC<DocumentsModalProps> = ({
                             {addMode === 'r2' ? (
                                 <div className="space-y-2.5 text-xs">
                                     <label className="block font-semibold text-gray-700 dark:text-gray-300">
-                                        파일 선택 * (여러 PDF·이미지 동시 선택 / 드래그 앤 드롭 가능 · 파일당 최대 10MB)
+                                        파일 선택 * (여러 PDF·이미지 동시 선택 / 드래그 앤 드롭 가능 · 최대 {MAX_DOCUMENT_SIZE_MB}MB)
                                     </label>
                                     <div
                                         onDragOver={(e) => {

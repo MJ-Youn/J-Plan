@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { DocumentCategory, DocumentVisibility, TravelDocument } from '../types/travel';
 
+export const MAX_DOCUMENT_SIZE_MB = 25;
+export const MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
+
 const getDevDocsKey = (travelId: string) => `jplan_docs_${travelId}`;
 const getDevFileBlobKey = (fileId: string) => `jplan_doc_blob_${fileId}`;
 
