@@ -182,7 +182,7 @@ ${jsonText}
 ### [수정 요청 가이드]
 1. 기존의 'travel.id', 'version' 값은 동일하게 유지해 주세요.
 2. 추가하거나 변경된 일정은 기존 'itineraries' 배열 구조 규격에 맞추어 주세요.
-3. 경비('expenses') 및 동행자('participants') 수정 시 기존 JSON 필드 규격(category: 항공권 | 렌트/교통 | 숙소 | 식비 | 관광 | 쇼핑(편의점) | 기타)을 유지해 주세요.
+3. 경비('expenses') 및 일정 내 경비('itineraries[].costs[]')·동행자('participants') 수정 시 기존 JSON 필드 규격(category: 항공권 | 렌트/교통 | 숙소 | 식비 | 관광 | 쇼핑(편의점) | 기타)을 유지해 주세요.
 4. 결과물은 반드시 전체 내용을 포함한 단일 \`\`\`json 코드 블록으로 출력해 주세요.`;
 
         const success = await copyToClipboard(prompt);

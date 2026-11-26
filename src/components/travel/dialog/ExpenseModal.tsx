@@ -11,8 +11,8 @@ import {
     DEFAULT_RATES_TO_KRW,
     EXPENSE_CATEGORIES,
     getItineraryCosts,
-    mapItineraryTypeToExpenseCategory,
     normalizeExpenseCategory,
+    resolveItineraryCostCategory,
     resolveTravelExchangeRates,
 } from '../../../utils/expenseService';
 import ExpenseCharts from './ExpenseCharts';
@@ -102,7 +102,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     costId: c.id,
                     rawCostTitle: c.title || i.content,
                     dayIndex: i.dayIndex,
-                    category: mapItineraryTypeToExpenseCategory(i.type, c.title || i.content),
+                    category: resolveItineraryCostCategory(c, i.type, i.content),
                     title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
                     amount: c.amount,
                     currency: c.currency,
@@ -201,6 +201,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     ? {
                           ...c,
                           id: c.id.endsWith('_legacy_cost') ? uuidv4() : c.id,
+                          category: editCategory,
                           title: editTitle.trim(),
                           amount: numAmount,
                           currency: editCurrency,
@@ -503,38 +504,36 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                                     </div>
                                                     <div className="grid grid-cols-2 sm:grid-cols-12 gap-2">
                                                         {exp.source === 'manual' && (
-                                                            <>
-                                                                <select
-                                                                    value={editDayIndex}
-                                                                    onChange={(e) => setEditDayIndex(Number(e.target.value))}
-                                                                    className="col-span-1 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
-                                                                >
-                                                                    {Array.from({ length: totalDays }, (_, i) => (
-                                                                        <option key={i + 1} value={i + 1}>
-                                                                            {i + 1}일차
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                                <select
-                                                                    value={editCategory}
-                                                                    onChange={(e) => setEditCategory(e.target.value as ExpenseCategory)}
-                                                                    className="col-span-1 sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
-                                                                >
-                                                                    {EXPENSE_CATEGORIES.map((c) => (
-                                                                        <option key={c} value={c}>
-                                                                            {c}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </>
+                                                            <select
+                                                                value={editDayIndex}
+                                                                onChange={(e) => setEditDayIndex(Number(e.target.value))}
+                                                                className="col-span-1 sm:col-span-2 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                            >
+                                                                {Array.from({ length: totalDays }, (_, i) => (
+                                                                    <option key={i + 1} value={i + 1}>
+                                                                        {i + 1}일차
+                                                                    </option>
+                                                                ))}
+                                                            </select>
                                                         )}
+                                                        <select
+                                                            value={editCategory}
+                                                            onChange={(e) => setEditCategory(e.target.value as ExpenseCategory)}
+                                                            className="col-span-1 sm:col-span-3 p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none"
+                                                        >
+                                                            {EXPENSE_CATEGORIES.map((c) => (
+                                                                <option key={c} value={c}>
+                                                                    {c}
+                                                                </option>
+                                                            ))}
+                                                        </select>
                                                         <input
                                                             type="text"
                                                             value={editTitle}
                                                             onChange={(e) => setEditTitle(e.target.value)}
                                                             placeholder={exp.source === 'itinerary' ? '사용처/설명' : '지출 내역'}
                                                             className={`col-span-2 ${
-                                                                exp.source === 'manual' ? 'sm:col-span-7' : 'sm:col-span-5'
+                                                                exp.source === 'manual' ? 'sm:col-span-7' : 'sm:col-span-9'
                                                             } p-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 outline-none focus:border-amber-500`}
                                                         />
                                                         <input

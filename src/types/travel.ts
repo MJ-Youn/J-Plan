@@ -261,6 +261,7 @@ export const formatDuration = (durationStr?: string): string => {
  */
 export interface ItineraryCostItem {
   id: string;
+  category?: ExpenseCategory; // 미지정 시 일정 종류(type) 기반으로 자동 추론
   title: string; // 사용처 / 설명 (예: 입장료, 점심, 주차비)
   amount: number;
   currency: ExpenseCurrency;

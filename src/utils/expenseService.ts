@@ -45,6 +45,21 @@ export function mapItineraryTypeToExpenseCategory(type: ItineraryType | string, 
 }
 
 /**
+ * 일정 연동 경비 항목(ItineraryCostItem)의 최종 경비 카테고리를 반환합니다.
+ * 개별 항목에 category가 지정되어 있으면 우선 사용하고, 없으면 일정 종류 기반으로 자동 추론합니다.
+ */
+export function resolveItineraryCostCategory(
+    cost: Pick<ItineraryCostItem, 'category' | 'title'>,
+    itineraryType: ItineraryType | string,
+    itineraryContent?: string,
+): ExpenseCategory {
+    if (cost.category) {
+        return normalizeExpenseCategory(cost.category);
+    }
+    return mapItineraryTypeToExpenseCategory(itineraryType, cost.title || itineraryContent);
+}
+
+/**
  * 일정의 1:N 경비 목록을 반환합니다. (구버전 1:1 필드 자동 호환)
  */
 export function getItineraryCosts(iti: Pick<Itinerary, 'id' | 'content' | 'costs' | 'costAmount' | 'costCurrency' | 'paidBy'>): ItineraryCostItem[] {

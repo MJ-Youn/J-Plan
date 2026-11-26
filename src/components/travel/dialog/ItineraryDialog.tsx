@@ -6,8 +6,8 @@ import { differenceInDays, parseISO } from 'date-fns';
 import { useDialog } from '../../../hooks/useDialog';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { calculateRouteInfo } from '../../../utils/routeCalculator';
-import { getItineraryCosts } from '../../../utils/expenseService';
-import type { TransportMode, Itinerary, ItineraryType, ExpenseCurrency, ItineraryCostItem } from '../../../types/travel';
+import { EXPENSE_CATEGORIES, getItineraryCosts, mapItineraryTypeToExpenseCategory } from '../../../utils/expenseService';
+import type { TransportMode, Itinerary, ItineraryType, ExpenseCurrency, ExpenseCategory, ItineraryCostItem } from '../../../types/travel';
 
 /**
  * 일정 추가 및 수정을 위한 모달 컴포넌트입니다.
@@ -52,7 +52,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
     const [transportMode, setTransportMode] = useState<TransportMode | ''>(initial?.transportMode || '');
     const [duration, setDuration] = useState(initial?.duration || '');
     const [distance, setDistance] = useState(initial?.distance || '');
-    const [costs, setCosts] = useState<Array<{ id: string; title: string; amount: string; currency: ExpenseCurrency; paidBy: string }>>(() => {
+    const [costs, setCosts] = useState<Array<{ id: string; category: ExpenseCategory | ''; title: string; amount: string; currency: ExpenseCurrency; paidBy: string }>>(() => {
         if (!initial) return [];
         return getItineraryCosts({
             id: initial.id || 'draft',
@@ -63,6 +63,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
             paidBy: initial.paidBy,
         }).map((c) => ({
             id: c.id,
+            category: c.category || '',
             title: c.title,
             amount: String(c.amount),
             currency: c.currency,
@@ -91,6 +92,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                   paidBy: initial.paidBy,
               }).map((c) => ({
                   id: c.id,
+                  category: c.category || '',
                   title: c.title,
                   amount: String(c.amount),
                   currency: c.currency,
@@ -173,6 +175,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                 if (Number.isNaN(parsed) || parsed <= 0) return null;
                 return {
                     id: c.id || uuidv4(),
+                    ...(c.category ? { category: c.category } : {}),
                     title: c.title.trim() || content.trim() || '경비',
                     amount: parsed,
                     currency: c.currency,
@@ -435,6 +438,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                             ...prev,
                                             {
                                                 id: uuidv4(),
+                                                category: '',
                                                 title: '',
                                                 amount: '',
                                                 currency: prev[prev.length - 1]?.currency || 'JPY',
@@ -460,6 +464,27 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                             key={costItem.id}
                                             className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-center p-2 rounded-lg bg-white/80 dark:bg-gray-900/70 border border-emerald-100 dark:border-emerald-900/40"
                                         >
+                                            <select
+                                                value={costItem.category}
+                                                onChange={(e) =>
+                                                    setCosts((prev) =>
+                                                        prev.map((c, i) =>
+                                                            i === idx ? { ...c, category: e.target.value as ExpenseCategory | '' } : c,
+                                                        ),
+                                                    )
+                                                }
+                                                className="col-span-2 sm:col-span-3 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                                title="경비 카테고리 (미지정 시 일정 종류 기준으로 자동 분류)"
+                                            >
+                                                <option value="">
+                                                    자동 ({mapItineraryTypeToExpenseCategory(type || '기타', costItem.title || content)})
+                                                </option>
+                                                {EXPENSE_CATEGORIES.map((cat) => (
+                                                    <option key={cat} value={cat}>
+                                                        {cat}
+                                                    </option>
+                                                ))}
+                                            </select>
                                             <input
                                                 type="text"
                                                 value={costItem.title}
@@ -469,7 +494,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                                     )
                                                 }
                                                 placeholder="사용처/설명 (예: 입장료)"
-                                                className="col-span-2 sm:col-span-4 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                                className="col-span-2 sm:col-span-3 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
                                             />
                                             <input
                                                 type="number"
@@ -481,7 +506,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                                     )
                                                 }
                                                 placeholder="금액"
-                                                className="col-span-1 sm:col-span-3 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                                className="col-span-1 sm:col-span-2 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
                                             />
                                             <select
                                                 value={costItem.currency}
@@ -500,7 +525,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                                     </option>
                                                 ))}
                                             </select>
-                                            <div className="col-span-2 sm:col-span-3 flex items-center gap-1.5">
+                                            <div className="col-span-2 sm:col-span-2 flex items-center gap-1.5">
                                                 {participants.length > 0 ? (
                                                     <select
                                                         value={costItem.paidBy}

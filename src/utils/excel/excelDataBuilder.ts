@@ -15,8 +15,8 @@ import {
     EXPENSE_CATEGORIES,
     formatItineraryCostsMultiline,
     getItineraryCosts,
-    mapItineraryTypeToExpenseCategory,
     normalizeExpenseCategory,
+    resolveItineraryCostCategory,
 } from '../expenseService';
 import {
     buildGoogleMapsSearchUrl,
@@ -257,7 +257,7 @@ export function buildTravelReportModel(params: {
             getItineraryCosts(i).map((c) => ({
                 id: `${i.id}:${c.id}`,
                 dayIndex: i.dayIndex,
-                category: mapItineraryTypeToExpenseCategory(i.type, c.title || i.content),
+                category: resolveItineraryCostCategory(c, i.type, i.content),
                 title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
                 amount: c.amount,
                 currency: c.currency,
