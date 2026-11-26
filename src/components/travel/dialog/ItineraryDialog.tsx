@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, Lock, Unlock } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTravelStore } from '../../../store/travelStore';
 import { differenceInDays, parseISO } from 'date-fns';
@@ -52,7 +52,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
     const [transportMode, setTransportMode] = useState<TransportMode | ''>(initial?.transportMode || '');
     const [duration, setDuration] = useState(initial?.duration || '');
     const [distance, setDistance] = useState(initial?.distance || '');
-    const [costs, setCosts] = useState<Array<{ id: string; category: ExpenseCategory | ''; title: string; amount: string; currency: ExpenseCurrency; paidBy: string }>>(() => {
+    const [costs, setCosts] = useState<Array<{ id: string; category: ExpenseCategory | ''; title: string; amount: string; currency: ExpenseCurrency; paidBy: string; isConfirmed: boolean }>>(() => {
         if (!initial) return [];
         return getItineraryCosts({
             id: initial.id || 'draft',
@@ -68,6 +68,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
             amount: String(c.amount),
             currency: c.currency,
             paidBy: c.paidBy || '',
+            isConfirmed: Boolean(c.isConfirmed),
         }));
     });
     const [isCalculating, setIsCalculating] = useState(false);
@@ -97,6 +98,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                   amount: String(c.amount),
                   currency: c.currency,
                   paidBy: c.paidBy || '',
+                  isConfirmed: Boolean(c.isConfirmed),
               }))
             : [];
 
@@ -180,6 +182,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                     amount: parsed,
                     currency: c.currency,
                     ...(c.paidBy.trim() ? { paidBy: c.paidBy.trim() } : {}),
+                    ...(c.isConfirmed ? { isConfirmed: true } : {}),
                 };
             })
             .filter((item): item is ItineraryCostItem => item !== null);
@@ -443,6 +446,7 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                                 amount: '',
                                                 currency: prev[prev.length - 1]?.currency || 'JPY',
                                                 paidBy: prev[prev.length - 1]?.paidBy || '',
+                                                isConfirmed: false,
                                             },
                                         ])
                                     }
@@ -556,6 +560,22 @@ const ItineraryDialogContent: React.FC<Props> = ({ isOpen, onClose, travelId, ed
                                                         className="flex-1 min-w-0 p-1.5 text-xs sm:text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-emerald-500"
                                                     />
                                                 )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setCosts((prev) =>
+                                                            prev.map((c, i) => (i === idx ? { ...c, isConfirmed: !c.isConfirmed } : c)),
+                                                        )
+                                                    }
+                                                    className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                                                        costItem.isConfirmed
+                                                            ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40'
+                                                            : 'text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                                    }`}
+                                                    title={costItem.isConfirmed ? '확정 경비 (AI 정산 시 보호됨)' : '예상 경비 (클릭하여 확정 잠금)'}
+                                                >
+                                                    {costItem.isConfirmed ? <Lock size={14} /> : <Unlock size={14} />}
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setCosts((prev) => prev.filter((_, i) => i !== idx))}

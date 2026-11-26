@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem, ItineraryType, StoredExchangeRates, Travel } from '../types/travel';
 import { isTravelCompleted } from './weatherService';
 
@@ -224,6 +225,161 @@ export async function resolveTravelExchangeRates(
         rates: res.rates,
         isLive: false,
         isFromDb: false,
+    };
+}
+
+const VALID_CURRENCIES: ExpenseCurrency[] = ['KRW', 'JPY', 'USD', 'EUR', 'TWD', 'THB', 'VND'];
+
+function normalizeCurrency(raw: unknown): ExpenseCurrency {
+    if (typeof raw === 'string' && (VALID_CURRENCIES as string[]).includes(raw.toUpperCase())) {
+        return raw.toUpperCase() as ExpenseCurrency;
+    }
+    return 'KRW';
+}
+
+export interface ParsedItineraryCostPatch {
+    itineraryId: string;
+    itineraryContent: string;
+    dayIndex: number;
+    costs: ItineraryCostItem[];
+}
+
+export interface SettlementPatchParseResult {
+    isValid: boolean;
+    error?: string;
+    itineraryPatches: ParsedItineraryCostPatch[];
+    expenses: ExpenseItem[];
+    unmatchedItineraryIds: string[];
+}
+
+/**
+ * Gemini 등에서 생성한 정산 Patch JSON 문자열을 파싱·검증합니다.
+ * `{ itineraryCosts: [...], expenses: [...] }` 형식과 단일 `[...]` 배열 형식 모두 지원합니다.
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export function parseSettlementPatchJson(rawText: string, itineraries: Itinerary[]): SettlementPatchParseResult {
+    const trimmed = rawText.trim();
+    if (!trimmed) {
+        return { isValid: false, error: 'JSON 내용을 입력해 주세요.', itineraryPatches: [], expenses: [], unmatchedItineraryIds: [] };
+    }
+
+    const cleaned = trimmed
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(cleaned);
+    } catch {
+        return { isValid: false, error: '올바른 JSON 형식이 아닙니다. 괄호나 쉼표를 확인해 주세요.', itineraryPatches: [], expenses: [], unmatchedItineraryIds: [] };
+    }
+
+    const itineraryMap = new Map(itineraries.map((i) => [i.id, i]));
+    const itineraryPatches: ParsedItineraryCostPatch[] = [];
+    const expenses: ExpenseItem[] = [];
+    const unmatchedItineraryIds: string[] = [];
+
+    const rawObj = Array.isArray(parsed)
+        ? { itineraryCosts: [], expenses: parsed }
+        : typeof parsed === 'object' && parsed !== null
+          ? (parsed as Record<string, unknown>)
+          : null;
+
+    if (!rawObj) {
+        return { isValid: false, error: 'JSON 객체 또는 배열 형식이어야 합니다.', itineraryPatches: [], expenses: [], unmatchedItineraryIds: [] };
+    }
+
+    if (Array.isArray(rawObj.itineraryCosts)) {
+        for (const entry of rawObj.itineraryCosts) {
+            if (!entry || typeof entry !== 'object') continue;
+            const rec = entry as Record<string, unknown>;
+            const itineraryId = typeof rec.itineraryId === 'string' ? rec.itineraryId.trim() : '';
+            if (!itineraryId) continue;
+
+            const target = itineraryMap.get(itineraryId);
+            if (!target) {
+                unmatchedItineraryIds.push(itineraryId);
+                continue;
+            }
+
+            const rawCosts = Array.isArray(rec.costs) ? rec.costs : [];
+            const validCosts: ItineraryCostItem[] = [];
+            for (const c of rawCosts) {
+                if (!c || typeof c !== 'object') continue;
+                const cRec = c as Record<string, unknown>;
+                const amount = Number(cRec.amount);
+                if (Number.isNaN(amount) || amount <= 0) continue;
+
+                const title = typeof cRec.title === 'string' && cRec.title.trim() ? cRec.title.trim() : target.content;
+                const category = typeof cRec.category === 'string' && cRec.category.trim()
+                    ? normalizeExpenseCategory(cRec.category.trim())
+                    : undefined;
+                const paidBy = typeof cRec.paidBy === 'string' && cRec.paidBy.trim() ? cRec.paidBy.trim() : undefined;
+
+                validCosts.push({
+                    id: typeof cRec.id === 'string' && cRec.id.trim() ? cRec.id.trim() : uuidv4(),
+                    ...(category ? { category } : {}),
+                    title,
+                    amount,
+                    currency: normalizeCurrency(cRec.currency),
+                    ...(paidBy ? { paidBy } : {}),
+                });
+            }
+
+            if (validCosts.length > 0) {
+                itineraryPatches.push({
+                    itineraryId,
+                    itineraryContent: target.content,
+                    dayIndex: target.dayIndex,
+                    costs: validCosts,
+                });
+            }
+        }
+    }
+
+    if (Array.isArray(rawObj.expenses)) {
+        for (const entry of rawObj.expenses) {
+            if (!entry || typeof entry !== 'object') continue;
+            const rec = entry as Record<string, unknown>;
+            const amount = Number(rec.amount);
+            if (Number.isNaN(amount) || amount <= 0) continue;
+
+            const dayNum = Number(rec.dayIndex);
+            const dayIndex = !Number.isNaN(dayNum) && dayNum >= 1 ? Math.floor(dayNum) : 1;
+            const title = typeof rec.title === 'string' && rec.title.trim() ? rec.title.trim() : '지출';
+            const category = normalizeExpenseCategory(typeof rec.category === 'string' ? rec.category.trim() : undefined);
+            const paidBy = typeof rec.paidBy === 'string' && rec.paidBy.trim() ? rec.paidBy.trim() : undefined;
+
+            expenses.push({
+                id: typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : uuidv4(),
+                dayIndex,
+                category,
+                title,
+                amount,
+                currency: normalizeCurrency(rec.currency),
+                ...(paidBy ? { paidBy } : {}),
+            });
+        }
+    }
+
+    if (itineraryPatches.length === 0 && expenses.length === 0) {
+        return {
+            isValid: false,
+            error: '유효한 일정 연동 경비(itineraryCosts) 또는 지출 항목(expenses)이 없습니다.',
+            itineraryPatches,
+            expenses,
+            unmatchedItineraryIds,
+        };
+    }
+
+    return {
+        isValid: true,
+        itineraryPatches,
+        expenses,
+        unmatchedItineraryIds,
     };
 }
 

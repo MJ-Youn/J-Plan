@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3, Edit2, Check, Database } from 'lucide-react';
+import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3, Edit2, Check, Database, FileJson, Lock, Unlock } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Travel } from '../../../types/travel';
@@ -14,8 +14,10 @@ import {
     normalizeExpenseCategory,
     resolveItineraryCostCategory,
     resolveTravelExchangeRates,
+    type ParsedItineraryCostPatch,
 } from '../../../utils/expenseService';
 import ExpenseCharts from './ExpenseCharts';
+import SettlementJsonModal, { type SettlementApplyOptions } from './SettlementJsonModal';
 
 interface ExpenseModalProps {
     isOpen: boolean;
@@ -56,6 +58,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     const [newParticipant, setNewParticipant] = useState('');
     const [filterDay, setFilterDay] = useState<number | 'ALL'>('ALL');
     const [isSaving, setIsSaving] = useState(false);
+    const [isSettlementJsonOpen, setIsSettlementJsonOpen] = useState(false);
 
     // 인라인 수정 상태
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,7 +69,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     const [editCurrency, setEditCurrency] = useState<ExpenseCurrency>('JPY');
     const [editPaidBy, setEditPaidBy] = useState('');
 
-    useEscapeKey(true, onClose, {
+    useEscapeKey(!isSettlementJsonOpen, onClose, {
         isDirty: Boolean(editingId || title.trim() || amount.trim() || newParticipant.trim()),
     });
 
@@ -107,6 +110,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     amount: c.amount,
                     currency: c.currency,
                     paidBy: c.paidBy,
+                    isConfirmed: Boolean(c.isConfirmed),
                     source: 'itinerary' as const,
                 })),
             );
@@ -114,6 +118,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         const manual = expenses.map((e) => ({
             ...e,
             category: normalizeExpenseCategory(e.category),
+            isConfirmed: Boolean(e.isConfirmed),
             source: 'manual' as const,
         }));
         return [...fromItineraries, ...manual].sort((a, b) => a.dayIndex - b.dayIndex);
@@ -264,6 +269,81 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
         }
     };
 
+    const handleToggleConfirm = (
+        exp: ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string },
+    ) => {
+        if (!canEdit) return;
+        const nextVal = !exp.isConfirmed;
+        if (exp.source === 'itinerary' && exp.itineraryId) {
+            const target = itineraries.find((i) => i.id === exp.itineraryId);
+            if (!target) return;
+            const nextCosts = getItineraryCosts(target).map((c) =>
+                c.id === exp.costId
+                    ? {
+                          ...c,
+                          id: c.id.endsWith('_legacy_cost') ? uuidv4() : c.id,
+                          isConfirmed: nextVal || undefined,
+                      }
+                    : c,
+            );
+            updateItinerary(target.id, {
+                costs: nextCosts,
+                costAmount: undefined,
+                costCurrency: undefined,
+                paidBy: undefined,
+            });
+        } else {
+            setExpenses(
+                travel.id,
+                expenses.map((x) => (x.id === exp.id ? { ...x, isConfirmed: nextVal || undefined } : x)),
+            );
+        }
+    };
+
+    const handleApplySettlementPatch = (
+        itineraryPatches: ParsedItineraryCostPatch[],
+        patchedExpenses: ExpenseItem[],
+        options: SettlementApplyOptions,
+    ) => {
+        if (!canEdit) return;
+
+        const patchMap = new Map(itineraryPatches.map((p) => [p.itineraryId, p.costs]));
+        const travelItineraries = itineraries.filter((i) => i.travelId === travel.id);
+
+        for (const iti of travelItineraries) {
+            const currentCosts = getItineraryCosts(iti);
+            const confirmedCosts = currentCosts.filter((c) => c.isConfirmed);
+            const incomingCosts = patchMap.get(iti.id);
+
+            if (incomingCosts) {
+                const nextCosts =
+                    options.itineraryMode === 'replace'
+                        ? [...confirmedCosts, ...incomingCosts]
+                        : [...currentCosts, ...incomingCosts];
+                updateItinerary(iti.id, {
+                    costs: nextCosts,
+                    costAmount: undefined,
+                    costCurrency: undefined,
+                    paidBy: undefined,
+                });
+            } else if (options.clearUnmatchedItineraryCosts && currentCosts.length > 0) {
+                updateItinerary(iti.id, {
+                    costs: confirmedCosts.length > 0 ? confirmedCosts : undefined,
+                    costAmount: undefined,
+                    costCurrency: undefined,
+                    paidBy: undefined,
+                });
+            }
+        }
+
+        if (options.expenseMode === 'replace') {
+            const confirmedManual = expenses.filter((e) => e.isConfirmed);
+            setExpenses(travel.id, [...confirmedManual, ...patchedExpenses]);
+        } else if (patchedExpenses.length > 0) {
+            setExpenses(travel.id, [...expenses, ...patchedExpenses]);
+        }
+    };
+
     const filteredExpenses = filterDay === 'ALL' ? combinedExpenses : combinedExpenses.filter((e) => e.dayIndex === filterDay);
 
     return (
@@ -282,13 +362,27 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                             </p>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 shrink-0"
-                    >
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        {canEdit && (
+                            <button
+                                type="button"
+                                onClick={() => setIsSettlementJsonOpen(true)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/60 transition-colors cursor-pointer"
+                                title="AI 영수증 분석 정산 JSON 일괄 입력"
+                            >
+                                <FileJson size={14} />
+                                <span className="hidden sm:inline">JSON 정산 수정</span>
+                                <span className="sm:hidden">JSON 정산</span>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 shrink-0"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* 요약 배너 */}
@@ -617,6 +711,32 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                                                                 일정 연동
                                                             </span>
                                                         )}
+                                                        {canEdit ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleToggleConfirm(exp)}
+                                                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                                                    exp.isConfirmed
+                                                                        ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300'
+                                                                        : 'bg-gray-100 text-gray-500 hover:text-sky-700 dark:bg-zinc-800 dark:text-gray-400'
+                                                                }`}
+                                                                title={
+                                                                    exp.isConfirmed
+                                                                        ? '확정 경비 (AI 정산 시 보호됨 · 클릭 시 해제)'
+                                                                        : '예상 경비 (클릭하여 확정 잠금)'
+                                                                }
+                                                            >
+                                                                {exp.isConfirmed ? <Lock size={9} /> : <Unlock size={9} />}
+                                                                {exp.isConfirmed ? '확정' : '예상'}
+                                                            </button>
+                                                        ) : (
+                                                            exp.isConfirmed && (
+                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+                                                                    <Lock size={9} />
+                                                                    확정
+                                                                </span>
+                                                            )
+                                                        )}
                                                         <span className="font-bold text-xs sm:text-sm text-gray-900 dark:text-gray-100 truncate">
                                                             {exp.title}
                                                         </span>
@@ -805,6 +925,16 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     </div>
                 </div>
             </div>
+            <SettlementJsonModal
+                isOpen={isSettlementJsonOpen}
+                onClose={() => setIsSettlementJsonOpen(false)}
+                travel={travel}
+                itineraries={itineraries}
+                expenses={expenses}
+                participants={participants}
+                rates={rates}
+                onApply={handleApplySettlementPatch}
+            />
         </div>
     );
 };

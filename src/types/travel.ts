@@ -124,6 +124,7 @@ export interface ExpenseItem {
   paidBy?: string;
   splitAmong?: string[];
   memo?: string;
+  isConfirmed?: boolean; // 확정(고정) 경비 여부 (AI 정산 시 덮어쓰기·초기화 보호)
 }
 
 /**
@@ -266,6 +267,7 @@ export interface ItineraryCostItem {
   amount: number;
   currency: ExpenseCurrency;
   paidBy?: string; // 결제자 이름
+  isConfirmed?: boolean; // 확정(고정) 경비 여부 (AI 정산 시 덮어쓰기·초기화 보호)
 }
 
 /**
