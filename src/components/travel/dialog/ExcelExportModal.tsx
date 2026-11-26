@@ -5,7 +5,7 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import type { Accommodation, Itinerary, Travel, TravelExportMeta } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 import { useTravelStore } from '../../../store/travelStore';
-import { fetchRatesToKrw } from '../../../utils/expenseService';
+import { resolveTravelExchangeRates } from '../../../utils/expenseService';
 import { getDayDateInfo, summarizeDayTheme } from '../../../utils/excel/excelHelpers';
 import { exportTravelToExcel } from '../../../utils/excel/travelExcelExporter';
 
@@ -165,7 +165,7 @@ const ExcelExportModalContent: React.FC<ExcelExportModalProps> = ({
                   })
                 : Promise.resolve();
 
-            const [rateRes] = await Promise.all([fetchRatesToKrw(), saveMetaPromise]);
+            const [rateRes] = await Promise.all([resolveTravelExchangeRates(travel), saveMetaPromise]);
 
             await exportTravelToExcel({
                 travel,

@@ -35,7 +35,7 @@ import ExcelPreviewModal from '../components/travel/dialog/ExcelPreviewModal';
 import ExpenseModal from '../components/travel/dialog/ExpenseModal';
 import ItineraryDialog from '../components/travel/dialog/ItineraryDialog';
 import SharedItineraryDialog from '../components/travel/dialog/SharedItineraryDialog';
-import GoogleMapView from '../components/travel/GoogleMapView';
+import GoogleMapView, { CompletedMapPlaceholder } from '../components/travel/GoogleMapView';
 import TimeTable from '../components/travel/TimeTable';
 import { useAuthStore } from '../store/authStore';
 import { useTravelStore } from '../store/travelStore';
@@ -43,6 +43,7 @@ import type { Accommodation, Itinerary, SharePermission, Travel } from '../types
 import { calculateRouteInfo } from '../utils/routeCalculator';
 import { exportTravelToIcs } from '../utils/icsExporter';
 import { fetchSharedTravelData, fetchSharedTravelRevision } from '../utils/shareService';
+import { isTravelCompleted } from '../utils/weatherService';
 
 /**
  * 공유된 여행 상세 페이지 컴포넌트입니다.
@@ -95,6 +96,7 @@ const SharedTravelDetail: React.FC = () => {
     const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
     const [activeTab, setActiveTab] = useState<'timeline' | 'map'>('timeline');
     const [isMapExpanded, setIsMapExpanded] = useState(false);
+    const [loadedMapTravelId, setLoadedMapTravelId] = useState<string | null>(null);
     const [selectedItineraryId, setSelectedItineraryId] = useState<string | null>(null);
 
     // 다이얼로그 상태
@@ -585,6 +587,9 @@ const SharedTravelDetail: React.FC = () => {
                             itineraries={rawItineraries}
                             accommodations={travelAccommodations}
                             selectedDay={selectedDay}
+                            onSaveWeatherSnapshot={
+                                isEditMode ? (weatherSnapshot) => updateTravel(travel.id, { weatherSnapshot }) : undefined
+                            }
                         />
                     </div>
 
@@ -676,18 +681,22 @@ const SharedTravelDetail: React.FC = () => {
 
                     {!isMapExpanded && (
                         <div className={`w-full lg:w-2/3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm ${activeTab === 'map' ? 'flex' : 'hidden lg:flex'} transition-all duration-300`}>
-                            <GoogleMapView
-                                itineraries={filteredItineraries}
-                                accommodations={travelAccommodations}
-                                selectedDay={selectedDay}
-                                selectedItineraryId={selectedItineraryId}
-                                onMarkerClick={(itiId) => {
-                                    setSelectedItineraryId(itiId);
-                                    if (!isEditMode) {
-                                        setIsViewDialogOpen(true);
-                                    }
-                                }}
-                            />
+                            {!isTravelCompleted(travel.endDate) || loadedMapTravelId === travel.id ? (
+                                <GoogleMapView
+                                    itineraries={filteredItineraries}
+                                    accommodations={travelAccommodations}
+                                    selectedDay={selectedDay}
+                                    selectedItineraryId={selectedItineraryId}
+                                    onMarkerClick={(itiId) => {
+                                        setSelectedItineraryId(itiId);
+                                        if (!isEditMode) {
+                                            setIsViewDialogOpen(true);
+                                        }
+                                    }}
+                                />
+                            ) : (
+                                <CompletedMapPlaceholder onLoadMap={() => setLoadedMapTravelId(travel.id)} />
+                            )}
                         </div>
                     )}
                 </div>

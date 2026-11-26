@@ -1,5 +1,17 @@
 import { differenceInDays, format, parseISO, subYears } from 'date-fns';
 
+/**
+ * 여행 종료일(YYYY-MM-DD)이 오늘 이전인지 판별합니다.
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export function isTravelCompleted(endDate?: string): boolean {
+    if (!endDate) return false;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    return endDate < todayStr;
+}
+
 export interface DailyWeatherInfo {
     date: string; // YYYY-MM-DD
     weatherCode: number;

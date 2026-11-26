@@ -1,6 +1,6 @@
 import { Map as GoogleMap, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Maximize2, Minimize2, X, Layers, Navigation, ExternalLink } from 'lucide-react';
+import { Maximize2, Minimize2, X, Layers, Navigation, ExternalLink, MapPin } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore';
 import type { Accommodation, Itinerary, ItineraryType, TransportMode } from '../../types/travel';
 import { getTypeEmoji, getTransportInfo, formatDuration } from '../../types/travel';
@@ -175,8 +175,11 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
                             time: iti.time,
                         });
                     }
-                } else if (iti.address) {
-                    const coords = await geocode(iti.address);
+                } else if (iti.address || (typeof iti.lat === 'number' && typeof iti.lng === 'number')) {
+                    const coords =
+                        typeof iti.lat === 'number' && typeof iti.lng === 'number'
+                            ? { lat: iti.lat, lng: iti.lng }
+                            : await geocode(iti.address!);
                     if (isCancelled) {
                         break;
                     }
@@ -188,7 +191,7 @@ const MapInner: React.FC<Props> = ({ itineraries, accommodations, selectedDay, s
                             lng: coords.lng,
                             content: iti.content,
                             type: iti.type,
-                            address: iti.address,
+                            address: iti.address || '',
                             description: iti.description,
                             dayIndex: iti.dayIndex,
                             time: iti.time,
@@ -574,5 +577,30 @@ const GoogleMapView: React.FC<Props> = (props) => {
         </div>
     );
 };
+
+/**
+ * 종료된 여행에서 불필요한 Google Maps API/타일 트래픽을 줄이기 위한 지연 로드 플레이스홀더입니다.
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export const CompletedMapPlaceholder: React.FC<{ onLoadMap: () => void }> = ({ onLoadMap }) => (
+    <div className="w-full h-full min-h-[320px] flex flex-col items-center justify-center p-6 text-center bg-gray-50 dark:bg-gray-900/60">
+        <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-3">
+            <MapPin size={24} />
+        </div>
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">종료된 여행입니다</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs mb-4 leading-relaxed">
+            외부 지도 API 트래픽 절약을 위해 지도를 자동으로 불러오지 않았습니다. 필요 시 아래 버튼을 눌러 지도를 확인하세요.
+        </p>
+        <button
+            type="button"
+            onClick={onLoadMap}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold shadow-sm transition-colors cursor-pointer"
+        >
+            지도 불러오기
+        </button>
+    </div>
+);
 
 export default GoogleMapView;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3, Edit2, Check } from 'lucide-react';
+import { X, Wallet, Plus, Trash2, Users, ArrowRight, Save, Loader2, RefreshCw, BarChart3, Edit2, Check, Database } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Travel } from '../../../types/travel';
@@ -10,10 +10,10 @@ import {
     convertToKrw,
     DEFAULT_RATES_TO_KRW,
     EXPENSE_CATEGORIES,
-    fetchRatesToKrw,
     getItineraryCosts,
     mapItineraryTypeToExpenseCategory,
     normalizeExpenseCategory,
+    resolveTravelExchangeRates,
 } from '../../../utils/expenseService';
 import ExpenseCharts from './ExpenseCharts';
 
@@ -38,12 +38,13 @@ const ExpenseModal: React.FC<ExpenseModalProps> = (props) => {
 };
 
 const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, canEdit }) => {
-    const { expenses, itineraries, participants, setExpenses, updateItinerary, setParticipants, saveTravelDetail, hasUnsavedChanges } = useTravelStore();
+    const { expenses, itineraries, participants, setExpenses, updateItinerary, setParticipants, saveTravelDetail, updateTravel, hasUnsavedChanges } = useTravelStore();
     const totalDays = Math.max(1, differenceInDays(parseISO(travel.endDate), parseISO(travel.startDate)) + 1);
 
     const [activeTab, setActiveTab] = useState<'list' | 'chart' | 'settle'>('list');
     const [rates, setRates] = useState<Record<ExpenseCurrency, number>>(DEFAULT_RATES_TO_KRW);
     const [isLiveRate, setIsLiveRate] = useState(false);
+    const [isFromDbRate, setIsFromDbRate] = useState(false);
 
     // 입력 폼 상태
     const [dayIndex, setDayIndex] = useState<number>(1);
@@ -72,17 +73,21 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     useEffect(() => {
         let cancelled = false;
         const loadRates = async () => {
-            const res = await fetchRatesToKrw();
+            const res = await resolveTravelExchangeRates(
+                travel,
+                canEdit ? (snapshot) => updateTravel(travel.id, { exchangeRatesSnapshot: snapshot }) : undefined,
+            );
             if (!cancelled) {
                 setRates(res.rates);
                 setIsLiveRate(res.isLive);
+                setIsFromDbRate(res.isFromDb);
             }
         };
         void loadRates();
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [travel.id, travel.endDate, canEdit, updateTravel]);
 
     // 일정에 등록된 비용(1:N) + 별도 추가된 비용을 하나의 목록으로 통합
     const combinedExpenses = useMemo<
@@ -299,9 +304,24 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                         </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300 flex items-center gap-1">
-                            <RefreshCw size={10} className={isLiveRate ? 'text-emerald-500' : 'text-gray-400'} />
-                            {isLiveRate ? `실시간 환율 (100엔 ≈ ${Math.round(rates.JPY * 100)}원)` : '기본 환율 적용'}
+                        <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                isFromDbRate
+                                    ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300'
+                                    : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-gray-300'
+                            }`}
+                            title={isFromDbRate ? 'DB에 저장된 당시 환율 정보를 불러왔습니다' : undefined}
+                        >
+                            {isFromDbRate ? (
+                                <Database size={10} className="text-sky-500" />
+                            ) : (
+                                <RefreshCw size={10} className={isLiveRate ? 'text-emerald-500' : 'text-gray-400'} />
+                            )}
+                            {isFromDbRate
+                                ? `DB 저장 환율 (100엔 ≈ ${Math.round(rates.JPY * 100)}원)`
+                                : isLiveRate
+                                  ? `실시간 환율 (100엔 ≈ ${Math.round(rates.JPY * 100)}원)`
+                                  : '기본 환율 적용'}
                         </span>
                         {currencyTotals.length > 0 && (
                             <div className="text-[11px] text-gray-500 dark:text-gray-400">

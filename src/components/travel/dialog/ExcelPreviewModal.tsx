@@ -3,7 +3,7 @@ import { X, Download, ExternalLink, FileSpreadsheet, Search, SlidersHorizontal, 
 import type { Accommodation, ExpenseCurrency, Itinerary, ItineraryType, Travel } from '../../../types/travel';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 import { useTravelStore } from '../../../store/travelStore';
-import { DEFAULT_RATES_TO_KRW, fetchRatesToKrw } from '../../../utils/expenseService';
+import { DEFAULT_RATES_TO_KRW, resolveTravelExchangeRates } from '../../../utils/expenseService';
 import { buildTravelReportModel, type ReportRowItem } from '../../../utils/excel/excelDataBuilder';
 import { exportTravelToExcel } from '../../../utils/excel/travelExcelExporter';
 import ExpenseCharts from './ExpenseCharts';
@@ -55,13 +55,13 @@ const ExcelPreviewContent: React.FC<ExcelPreviewModalProps> = ({
 
     useEffect(() => {
         let cancelled = false;
-        fetchRatesToKrw().then((res) => {
+        resolveTravelExchangeRates(travel).then((res) => {
             if (!cancelled) setRates(res.rates);
         });
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [travel]);
 
     const model = useMemo(
         () => buildTravelReportModel({ travel, itineraries, accommodations, expenses, rates }),

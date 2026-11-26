@@ -1,4 +1,5 @@
-import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem, ItineraryType } from '../types/travel';
+import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem, ItineraryType, StoredExchangeRates, Travel } from '../types/travel';
+import { isTravelCompleted } from './weatherService';
 
 /**
  * 여행 경비 카테고리 표준 순서 목록
@@ -144,6 +145,71 @@ export async function fetchRatesToKrw(): Promise<{ rates: Record<ExpenseCurrency
     } catch {
         return { rates: DEFAULT_RATES_TO_KRW, isLive: false };
     }
+}
+
+/**
+ * 여행 상태(종료 여부)에 따라 DB 저장 환율 또는 실시간 환율 API를 조회합니다.
+ * - 종료된 여행 + DB 스냅샷 있음: 외부 API 호출 없이 DB 저장 환율 반환
+ * - 종료 전 여행 또는 종료되었으나 DB 스냅샷 없음: API 조회 후 DB 저장 콜백 호출
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export async function resolveTravelExchangeRates(
+    travel: Travel,
+    onSaveSnapshot?: (snapshot: StoredExchangeRates) => Promise<void> | void,
+): Promise<{
+    rates: Record<ExpenseCurrency, number>;
+    isLive: boolean;
+    isFromDb: boolean;
+    updatedAt?: string;
+}> {
+    const isCompleted = isTravelCompleted(travel.endDate);
+    const saved = travel.exchangeRatesSnapshot;
+
+    if (isCompleted && saved?.rates) {
+        return {
+            rates: saved.rates,
+            isLive: true,
+            isFromDb: true,
+            updatedAt: saved.updatedAt,
+        };
+    }
+
+    const res = await fetchRatesToKrw();
+    if (res.isLive) {
+        if (onSaveSnapshot) {
+            const isSame = saved?.rates && JSON.stringify(saved.rates) === JSON.stringify(res.rates);
+            if (!isSame) {
+                void Promise.resolve(
+                    onSaveSnapshot({
+                        rates: res.rates,
+                        updatedAt: new Date().toISOString(),
+                    }),
+                ).catch((err) => console.warn('[ExpenseService] Failed to save exchange rates snapshot:', err));
+            }
+        }
+        return {
+            rates: res.rates,
+            isLive: true,
+            isFromDb: false,
+        };
+    }
+
+    if (saved?.rates) {
+        return {
+            rates: saved.rates,
+            isLive: true,
+            isFromDb: true,
+            updatedAt: saved.updatedAt,
+        };
+    }
+
+    return {
+        rates: res.rates,
+        isLive: false,
+        isFromDb: false,
+    };
 }
 
 /**

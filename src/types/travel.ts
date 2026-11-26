@@ -14,6 +14,36 @@ export interface TravelExportMeta {
 }
 
 /**
+ * DB(R2)에 저장되는 일별 날씨 스냅샷 항목 인터페이스
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export interface StoredDayWeather {
+  dayIndex: number;
+  date: string; // YYYY-MM-DD
+  placeLabel: string;
+  weatherCode: number;
+  emoji: string;
+  label: string;
+  tempMax: number;
+  tempMin: number;
+  precipProb?: number;
+  isHistoricalRef?: boolean;
+}
+
+/**
+ * DB(R2)에 저장되는 환율 스냅샷 인터페이스
+ *
+ * @author 윤명준 (MJ Yun)
+ * @since 2026. 11. 26.
+ */
+export interface StoredExchangeRates {
+  rates: Record<ExpenseCurrency, number>;
+  updatedAt: string; // ISO 8601
+}
+
+/**
  * 여행 기본 정보 인터페이스
  *
  * @author 윤명준 (MJ Yun)
@@ -29,6 +59,11 @@ export interface Travel {
   ownerId?: string; // 소유자 ID (공유받은 여행일 때 사용)
   ownerName?: string; // 소유자 이름
   exportMeta?: TravelExportMeta; // Excel 출력용 메타데이터
+  weatherSnapshot?: {
+    items: StoredDayWeather[];
+    updatedAt: string;
+  };
+  exchangeRatesSnapshot?: StoredExchangeRates;
 }
 
 /**

@@ -6,7 +6,7 @@ import { useTravelStore } from '../store/travelStore';
 import TimeTable from '../components/travel/TimeTable';
 import ItineraryDialog from '../components/travel/dialog/ItineraryDialog';
 import AccommodationDialog from '../components/travel/dialog/AccommodationDialog';
-import GoogleMapView from '../components/travel/GoogleMapView';
+import GoogleMapView, { CompletedMapPlaceholder } from '../components/travel/GoogleMapView';
 import DetailHeader from '../components/travel/DetailHeader';
 import DayFilter from '../components/travel/DayFilter';
 import WeatherBanner from '../components/travel/WeatherBanner';
@@ -21,6 +21,7 @@ import ExpenseModal from '../components/travel/dialog/ExpenseModal';
 import ConflictModal from '../components/travel/dialog/ConflictModal';
 import { calculateRouteInfo } from '../utils/routeCalculator';
 import { exportTravelToIcs } from '../utils/icsExporter';
+import { isTravelCompleted } from '../utils/weatherService';
 import type { Itinerary, TravelExportData } from '../types/travel';
 
 /**
@@ -73,6 +74,7 @@ const TravelDetail: React.FC = () => {
     const [isAccModalOpen, setIsAccModalOpen] = useState(false);
     const [isRecalculatingRoutes, setIsRecalculatingRoutes] = useState(false);
     const [calcProgressText, setCalcProgressText] = useState<string | null>(null);
+    const [loadedMapTravelId, setLoadedMapTravelId] = useState<string | null>(null);
     const hasLoadedListRef = useRef(false);
 
     const travel = travels.find((t) => t.id === id);
@@ -292,6 +294,7 @@ const TravelDetail: React.FC = () => {
                         itineraries={allTravelItineraries}
                         accommodations={travelAccommodations}
                         selectedDay={selectedDay}
+                        onSaveWeatherSnapshot={(weatherSnapshot) => updateTravel(travel.id, { weatherSnapshot })}
                     />
                 </div>
 
@@ -370,13 +373,17 @@ const TravelDetail: React.FC = () => {
                 {/* 지도 뷰 */}
                 {!isMapExpanded && (
                     <div className={`w-full lg:w-2/3 bg-gray-100 dark:bg-gray-800 border border-gray-200 rounded-2xl overflow-hidden print:hidden ${activeTab === 'map' ? 'flex' : 'hidden lg:flex'} transition-all duration-300`}>
-                        <GoogleMapView
-                            itineraries={filteredItineraries}
-                            accommodations={travelAccommodations}
-                            selectedDay={selectedDay}
-                            selectedItineraryId={selectedItineraryId}
-                            onMarkerClick={(itiId) => setSelectedItineraryId(itiId)}
-                        />
+                        {!isTravelCompleted(travel.endDate) || loadedMapTravelId === travel.id ? (
+                            <GoogleMapView
+                                itineraries={filteredItineraries}
+                                accommodations={travelAccommodations}
+                                selectedDay={selectedDay}
+                                selectedItineraryId={selectedItineraryId}
+                                onMarkerClick={(itiId) => setSelectedItineraryId(itiId)}
+                            />
+                        ) : (
+                            <CompletedMapPlaceholder onLoadMap={() => setLoadedMapTravelId(travel.id)} />
+                        )}
                     </div>
                 )}
             </div>
