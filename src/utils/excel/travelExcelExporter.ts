@@ -41,6 +41,18 @@ export interface ExcelExportOptions {
 }
 
 /**
+ * Uint8Array 바이너리를 base64 문자열로 변환합니다. (브라우저 Buffer 비의존)
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
+/**
  * 주소 셀에 텍스트와 Google Maps 검색 하이퍼링크를 함께 설정합니다.
  */
 function setAddressCellValue(cell: Cell, addressText: string, lat?: number, lng?: number): boolean {
@@ -86,10 +98,22 @@ export async function exportTravelToExcel(options: ExcelExportOptions): Promise<
         includeChartImage = true,
     } = options;
 
-    // 초기 번들 사이즈 최적화를 위해 exceljs 동적 로드
-    const ExcelJSModule = await import('exceljs');
-    const ExcelJS = ExcelJSModule.default ?? ExcelJSModule;
-    const workbook = new ExcelJS.Workbook() as Workbook;
+    // 초기 번들 사이즈 최적화를 위해 exceljs 동적 로드 (ESM/CJS 인터롭 안전 처리)
+    const ExcelJSModule = (await import('exceljs')) as unknown as {
+        Workbook?: new () => Workbook;
+        default?: {
+            Workbook?: new () => Workbook;
+            default?: { Workbook?: new () => Workbook };
+        };
+    };
+    const WorkbookCtor =
+        ExcelJSModule.Workbook ??
+        ExcelJSModule.default?.Workbook ??
+        ExcelJSModule.default?.default?.Workbook;
+    if (!WorkbookCtor) {
+        throw new Error('ExcelJS Workbook 생성자를 로드할 수 없습니다.');
+    }
+    const workbook = new WorkbookCtor();
 
     workbook.creator = 'J-Plan';
     workbook.created = new Date();
@@ -166,18 +190,25 @@ export async function exportTravelToExcel(options: ExcelExportOptions): Promise<
         });
     }
 
-    // 5. 브라우저 파일 다운로드 트리거
+    // 5. 브라우저 파일 다운로드 트리거 (모바일 Safari/Android 호환성을 위해 DOM 부착 및 지연 해제)
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
+    const safeFileName = (travel.name || 'jplan_schedule').replace(/[\\/:*?"<>|]/g, '_').trim() || 'jplan_schedule';
+    const fileName = `${safeFileName}_일정표.xlsx`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const safeFileName = travel.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'jplan_schedule';
     link.href = url;
-    link.download = `${safeFileName}_일정표.xlsx`;
+    link.download = fileName;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+    }, 10000);
 }
 
 /**
@@ -590,16 +621,20 @@ async function buildSummarySheet(params: {
 
     // 좌측 주행거리 차트 이미지 삽입 (A~E열)
     if (includeChartImage) {
-        const pngBytes = await generateDistanceChartPng(chartData);
-        if (pngBytes) {
-            const imageId = workbook.addImage({
-                buffer: pngBytes as unknown as Parameters<Workbook['addImage']>[0]['buffer'],
-                extension: 'png',
-            });
-            sheet.addImage(imageId, {
-                tl: { col: 0, row: bottomRow - 1 },
-                ext: { width: 500, height: 220 },
-            });
+        try {
+            const pngBytes = await generateDistanceChartPng(chartData);
+            if (pngBytes) {
+                const imageId = workbook.addImage({
+                    base64: uint8ArrayToBase64(pngBytes),
+                    extension: 'png',
+                });
+                sheet.addImage(imageId, {
+                    tl: { col: 0, row: bottomRow - 1 },
+                    ext: { width: 500, height: 220 },
+                });
+            }
+        } catch (chartErr) {
+            console.warn('[travelExcelExporter] 주행거리 차트 이미지 삽입 건너뜀:', chartErr);
         }
     }
 
@@ -1184,21 +1219,25 @@ async function buildExpenseAnalysisSheet(params: {
     // 그래프 이미지 삽입 (카테고리 도넛 + 일차별 막대)
     let chartBottomRow = currentRow + 1;
     if (includeChartImage) {
-        const chartPng = await generateExpenseChartPng({
-            categories: report.expenseCategorySummary,
-            dailyTotals: report.daySheets.map((d) => ({ label: `${d.dayIndex}일차`, krwAmount: d.expenseKrw })),
-            totalKrw: report.totals.expenseKrw,
-        });
-        if (chartPng) {
-            const imgId = workbook.addImage({
-                buffer: chartPng as unknown as ArrayBuffer,
-                extension: 'png',
+        try {
+            const chartPng = await generateExpenseChartPng({
+                categories: report.expenseCategorySummary,
+                dailyTotals: report.daySheets.map((d) => ({ label: `${d.dayIndex}일차`, krwAmount: d.expenseKrw })),
+                totalKrw: report.totals.expenseKrw,
             });
-            sheet.addImage(imgId, {
-                tl: { col: 3.2, row: 2.2 },
-                ext: { width: 520, height: 192 },
-            });
-            chartBottomRow = Math.max(chartBottomRow, 13);
+            if (chartPng) {
+                const imgId = workbook.addImage({
+                    base64: uint8ArrayToBase64(chartPng),
+                    extension: 'png',
+                });
+                sheet.addImage(imgId, {
+                    tl: { col: 3.2, row: 2.2 },
+                    ext: { width: 520, height: 192 },
+                });
+                chartBottomRow = Math.max(chartBottomRow, 13);
+            }
+        } catch (chartErr) {
+            console.warn('[travelExcelExporter] 경비 차트 이미지 삽입 건너뜀:', chartErr);
         }
     }
 

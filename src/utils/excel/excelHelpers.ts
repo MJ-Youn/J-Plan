@@ -8,9 +8,9 @@ const KOREAN_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as con
  * 거리 문자열(예: "18.4 km", "500 m", "1,240km")을 km 단위 숫자로 변환합니다.
  * Excel SUM / SUMIFS 수식 계산을 위해 숫자값을 반환합니다.
  */
-export function parseDistanceToKm(distance?: string): number {
-    if (!distance) return 0;
-    const cleaned = distance.replace(/,/g, '').trim().toLowerCase();
+export function parseDistanceToKm(distance?: string | number): number {
+    if (distance === undefined || distance === null || distance === '') return 0;
+    const cleaned = String(distance).replace(/,/g, '').trim().toLowerCase();
     const match = cleaned.match(/([\d.]+)\s*(km|m)?/);
     if (!match) return 0;
 
@@ -150,7 +150,7 @@ export function formatDescriptionForExcel(raw?: string): string {
 export function summarizeDayTheme(dayItineraries: Itinerary[]): string {
     const highlights = dayItineraries
         .filter((i) => i.type === '관광' || i.type === '식사')
-        .map((i) => i.content.replace(/^\[.*?\]\s*/, '').trim())
+        .map((i) => (i.content || '').replace(/^\[.*?\]\s*/, '').trim())
         .filter(Boolean);
 
     const unique = Array.from(new Set(highlights));
@@ -159,7 +159,7 @@ export function summarizeDayTheme(dayItineraries: Itinerary[]): string {
     }
 
     const fallback = dayItineraries
-        .map((i) => i.content.trim())
+        .map((i) => (i.content || '').trim())
         .filter(Boolean)
         .slice(0, 2);
     return fallback.length > 0 ? fallback.join(' · ') : '자유 일정';
@@ -215,7 +215,7 @@ export function estimateRowHeight(
 export function sortAndNormalizeDayItineraries(itineraries: Itinerary[], dayIndex: number): Array<Itinerary & { effectiveEndTime: string }> {
     const sorted = itineraries
         .filter((i) => i.dayIndex === dayIndex)
-        .sort((a, b) => a.time.localeCompare(b.time));
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
     return sorted.map((iti, idx) => {
         let effectiveEnd = iti.endTime?.trim() || '';

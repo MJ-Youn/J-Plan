@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { ExpenseCategory, ExpenseCurrency, ExpenseItem } from '../../../types/travel';
-import { convertToKrw } from '../../../utils/expenseService';
+import { convertToKrw, EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../../utils/expenseService';
 
 interface ExpenseChartsProps {
     expenses: ExpenseItem[];
@@ -8,28 +8,38 @@ interface ExpenseChartsProps {
     rates: Record<ExpenseCurrency, number>;
 }
 
-const CATEGORY_ORDER: ExpenseCategory[] = ['식비', '숙박', '교통·렌터카', '관광·쇼핑', '기타'];
+const CATEGORY_ORDER: ExpenseCategory[] = EXPENSE_CATEGORIES;
 
 const CATEGORY_COLORS: Record<ExpenseCategory, { hex: string; dot: string; badge: string }> = {
+    항공권: {
+        hex: '#0ea5e9',
+        dot: 'bg-sky-500',
+        badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
+    },
+    '렌트/교통': {
+        hex: '#3b82f6',
+        dot: 'bg-blue-500',
+        badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+    },
+    숙소: {
+        hex: '#6366f1',
+        dot: 'bg-indigo-500',
+        badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
+    },
     식비: {
         hex: '#f59e0b',
         dot: 'bg-amber-500',
         badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
     },
-    숙박: {
-        hex: '#6366f1',
-        dot: 'bg-indigo-500',
-        badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',
-    },
-    '교통·렌터카': {
-        hex: '#3b82f6',
-        dot: 'bg-blue-500',
-        badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
-    },
-    '관광·쇼핑': {
+    관광: {
         hex: '#10b981',
         dot: 'bg-emerald-500',
         badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+    },
+    '쇼핑(편의점)': {
+        hex: '#ec4899',
+        dot: 'bg-pink-500',
+        badge: 'bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
     },
     기타: {
         hex: '#a855f7',
@@ -63,16 +73,19 @@ const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalDays, rate
         const dayMap = new Map<number, Record<ExpenseCategory, number>>();
         for (let d = 1; d <= totalDays; d++) {
             dayMap.set(d, {
+                항공권: 0,
+                '렌트/교통': 0,
+                숙소: 0,
                 식비: 0,
-                숙박: 0,
-                '교통·렌터카': 0,
-                '관광·쇼핑': 0,
+                관광: 0,
+                '쇼핑(편의점)': 0,
                 기타: 0,
             });
         }
 
         const withKrw = expenses.map((e) => ({
             ...e,
+            category: normalizeExpenseCategory(e.category),
             krw: convertToKrw(e.amount, e.currency, rates),
         }));
 
@@ -187,8 +200,8 @@ const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalDays, rate
                         <span className="text-[11px] text-gray-400">KRW 환산 기준</span>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-4">
-                        <div className="relative w-36 h-36 shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center gap-3.5">
+                        <div className="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0">
                             <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
                                 <circle
                                     cx="70"
@@ -240,7 +253,7 @@ const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalDays, rate
                             </div>
                         </div>
 
-                        <div className="flex-1 w-full space-y-1.5 text-xs">
+                        <div className="flex-1 w-full space-y-1 text-[11px] sm:text-xs">
                             {categoryData.map((item) => (
                                 <button
                                     key={item.category}
@@ -250,17 +263,17 @@ const ExpenseCharts: React.FC<ExpenseChartsProps> = ({ expenses, totalDays, rate
                                     onClick={() =>
                                         setHoveredCategory((prev) => (prev === item.category ? null : item.category))
                                     }
-                                    className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition-colors text-left ${
+                                    className={`w-full flex items-center justify-between gap-2 px-1.5 py-1 rounded-lg transition-colors text-left ${
                                         hoveredCategory === item.category
                                             ? 'bg-gray-100 dark:bg-zinc-800'
                                             : 'hover:bg-gray-50 dark:hover:bg-zinc-800/50'
                                     }`}
                                 >
-                                    <span className="flex items-center gap-1.5 min-w-0">
+                                    <span className="flex items-center gap-1.5 shrink-0">
                                         <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${CATEGORY_COLORS[item.category].dot}`} />
-                                        <span className="font-medium text-gray-700 dark:text-gray-200 truncate">{item.category}</span>
+                                        <span className="font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{item.category}</span>
                                     </span>
-                                    <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">
+                                    <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
                                         ₩{Math.round(item.amount).toLocaleString()}{' '}
                                         <span className="text-[10px] font-normal text-gray-400">({item.percent.toFixed(0)}%)</span>
                                     </span>

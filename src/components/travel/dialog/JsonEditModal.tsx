@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { validateTravelJson } from '../../../utils/jsonValidator';
 import { copyToClipboard, readFromClipboard } from '../../../utils/clipboard';
+import { normalizeExpenseCategory } from '../../../utils/expenseService';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 import type { TravelExportData } from '../../../types/travel';
 
@@ -181,7 +182,8 @@ ${jsonText}
 ### [수정 요청 가이드]
 1. 기존의 'travel.id', 'version' 값은 동일하게 유지해 주세요.
 2. 추가하거나 변경된 일정은 기존 'itineraries' 배열 구조 규격에 맞추어 주세요.
-3. 결과물은 반드시 전체 내용을 포함한 단일 \`\`\`json 코드 블록으로 출력해 주세요.`;
+3. 경비('expenses') 및 동행자('participants') 수정 시 기존 JSON 필드 규격(category: 항공권 | 렌트/교통 | 숙소 | 식비 | 관광 | 쇼핑(편의점) | 기타)을 유지해 주세요.
+4. 결과물은 반드시 전체 내용을 포함한 단일 \`\`\`json 코드 블록으로 출력해 주세요.`;
 
         const success = await copyToClipboard(prompt);
         if (success) {
@@ -215,6 +217,14 @@ ${jsonText}
                     ...acc,
                     travelId: currentData.travel.id,
                 })),
+                ...(validation.data.expenses
+                    ? {
+                          expenses: validation.data.expenses.map((exp) => ({
+                              ...exp,
+                              category: normalizeExpenseCategory(exp.category),
+                          })),
+                      }
+                    : {}),
             };
 
             await onSave(finalData);
@@ -231,9 +241,16 @@ ${jsonText}
     // 변경 차이점 계산
     const currentItiCount = currentData.itineraries?.length || 0;
     const currentAccCount = currentData.accommodations?.length || 0;
+    const currentExpCount = currentData.expenses?.length || 0;
+    const currentPartCount = currentData.participants?.length || 0;
     const newItiCount = validation.data?.itineraries?.length || 0;
     const newAccCount = validation.data?.accommodations?.length || 0;
+    const newExpCount = validation.data?.expenses?.length || 0;
+    const newPartCount = validation.data?.participants?.length || 0;
     const itiDiff = newItiCount - currentItiCount;
+    const accDiff = newAccCount - currentAccCount;
+    const expDiff = newExpCount - currentExpCount;
+    const partDiff = newPartCount - currentPartCount;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -251,7 +268,7 @@ ${jsonText}
                         </div>
                         <div>
                             <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">JSON으로 일정 수정하기</h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">현재 여행의 모든 일정/숙소를 JSON 형태로 직접 수정하거나 일괄 교체합니다.</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">현재 여행의 모든 일정/숙소/경비를 JSON 형태로 직접 수정하거나 일괄 교체합니다.</p>
                         </div>
                     </div>
                     <button
@@ -466,7 +483,7 @@ ${jsonText}
                                     ({validation.data.travel.startDate} ~ {validation.data.travel.endDate})
                                 </span>
                             </div>
-                            <div className="flex items-center space-x-3 text-xs">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                                 <span>
                                     일정: {currentItiCount}개{' '}
                                     <ArrowRight
@@ -483,7 +500,28 @@ ${jsonText}
                                         className="inline mx-0.5"
                                     />{' '}
                                     <strong>{newAccCount}개</strong>
+                                    {accDiff !== 0 && <span className={`ml-1 font-bold ${accDiff > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>({accDiff > 0 ? `+${accDiff}` : accDiff})</span>}
                                 </span>
+                                <span>
+                                    경비: {currentExpCount}개{' '}
+                                    <ArrowRight
+                                        size={12}
+                                        className="inline mx-0.5"
+                                    />{' '}
+                                    <strong>{newExpCount}개</strong>
+                                    {expDiff !== 0 && <span className={`ml-1 font-bold ${expDiff > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>({expDiff > 0 ? `+${expDiff}` : expDiff})</span>}
+                                </span>
+                                {(currentPartCount > 0 || newPartCount > 0) && (
+                                    <span>
+                                        동행자: {currentPartCount}명{' '}
+                                        <ArrowRight
+                                            size={12}
+                                            className="inline mx-0.5"
+                                        />{' '}
+                                        <strong>{newPartCount}명</strong>
+                                        {partDiff !== 0 && <span className={`ml-1 font-bold ${partDiff > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'}`}>({partDiff > 0 ? `+${partDiff}` : partDiff})</span>}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     ) : (

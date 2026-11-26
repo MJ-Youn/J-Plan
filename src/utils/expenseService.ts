@@ -1,4 +1,47 @@
-import type { ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem } from '../types/travel';
+import type { ExpenseCategory, ExpenseCurrency, ExpenseItem, Itinerary, ItineraryCostItem, ItineraryType } from '../types/travel';
+
+/**
+ * 여행 경비 카테고리 표준 순서 목록
+ */
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+    '항공권',
+    '렌트/교통',
+    '숙소',
+    '식비',
+    '관광',
+    '쇼핑(편의점)',
+    '기타',
+];
+
+/**
+ * 구 버전 경비 카테고리('숙박', '교통·렌터카', '관광·쇼핑')를 신규 7종 카테고리로 안전하게 변환합니다.
+ */
+export function normalizeExpenseCategory(raw?: string): ExpenseCategory {
+    if (!raw) return '기타';
+    if ((EXPENSE_CATEGORIES as string[]).includes(raw)) {
+        return raw as ExpenseCategory;
+    }
+    if (raw === '숙박') return '숙소';
+    if (raw === '교통·렌터카') return '렌트/교통';
+    if (raw === '관광·쇼핑') return '쇼핑(편의점)';
+    return '기타';
+}
+
+/**
+ * 일정 구분(type)과 내용(content)을 바탕으로 경비 카테고리를 자동 매핑합니다.
+ */
+export function mapItineraryTypeToExpenseCategory(type: ItineraryType | string, content?: string): ExpenseCategory {
+    if (type === '이동') {
+        const text = (content || '').toLowerCase();
+        if (/(항공|비행기|공항|티웨이|대한항공|아시아나|진에어|제주항공|이스타|에어부산|에어서울|피치|집에어|flight|airport)/i.test(text)) {
+            return '항공권';
+        }
+        return '렌트/교통';
+    }
+    if (type === '식사') return '식비';
+    if (type === '관광') return '관광';
+    return '기타';
+}
 
 /**
  * 일정의 1:N 경비 목록을 반환합니다. (구버전 1:1 필드 자동 호환)

@@ -12,8 +12,11 @@ import type {
 import {
     convertToKrw,
     DEFAULT_RATES_TO_KRW,
+    EXPENSE_CATEGORIES,
     formatItineraryCostsMultiline,
     getItineraryCosts,
+    mapItineraryTypeToExpenseCategory,
+    normalizeExpenseCategory,
 } from '../expenseService';
 import {
     buildGoogleMapsSearchUrl,
@@ -113,14 +116,7 @@ export interface TravelReportModel {
     };
 }
 
-const CATEGORY_ORDER: ExpenseCategory[] = ['식비', '숙박', '교통·렌터카', '관광·쇼핑', '기타'];
-
-function mapItineraryTypeToExpenseCategory(type: ItineraryType): ExpenseCategory {
-    if (type === '이동') return '교통·렌터카';
-    if (type === '식사') return '식비';
-    if (type === '관광') return '관광·쇼핑';
-    return '기타';
-}
+const CATEGORY_ORDER: ExpenseCategory[] = EXPENSE_CATEGORIES;
 
 /**
  * 여행 데이터를 Excel 내보내기 및 화면 표 미리보기에서 공통으로 사용하는
@@ -261,7 +257,7 @@ export function buildTravelReportModel(params: {
             getItineraryCosts(i).map((c) => ({
                 id: `${i.id}:${c.id}`,
                 dayIndex: i.dayIndex,
-                category: mapItineraryTypeToExpenseCategory(i.type),
+                category: mapItineraryTypeToExpenseCategory(i.type, c.title || i.content),
                 title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
                 amount: c.amount,
                 currency: c.currency,
@@ -273,6 +269,7 @@ export function buildTravelReportModel(params: {
 
     const combinedFromManual: CombinedReportExpense[] = expenses.map((e) => ({
         ...e,
+        category: normalizeExpenseCategory(e.category),
         source: 'manual' as const,
         krwAmount: convertToKrw(e.amount, e.currency, rates),
     }));

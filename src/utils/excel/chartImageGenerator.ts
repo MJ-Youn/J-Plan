@@ -123,10 +123,12 @@ export interface ExpenseDailyChartItem {
 }
 
 const EXPENSE_CAT_COLORS: Record<string, string> = {
+    항공권: '#0ea5e9',
+    '렌트/교통': '#3b82f6',
+    숙소: '#6366f1',
     식비: '#f59e0b',
-    숙박: '#6366f1',
-    '교통·렌터카': '#3b82f6',
-    '관광·쇼핑': '#10b981',
+    관광: '#10b981',
+    '쇼핑(편의점)': '#ec4899',
     기타: '#a855f7',
 };
 
@@ -146,7 +148,7 @@ export async function generateExpenseChartPng(params: {
 
     const scale = 2;
     const width = 760;
-    const height = 280;
+    const height = Math.max(280, 72 + categories.length * 32 + 16);
     const canvas = document.createElement('canvas');
     canvas.width = width * scale;
     canvas.height = height * scale;
@@ -202,7 +204,7 @@ export async function generateExpenseChartPng(params: {
     ctx.fillText(`₩${Math.round(totalKrw).toLocaleString()}`, cx, cy + 12);
 
     // 도넛 범례
-    let legendY = 72;
+    let legendY = 64;
     categories.forEach((c) => {
         ctx.fillStyle = EXPENSE_CAT_COLORS[c.category] || '#94a3b8';
         ctx.fillRect(190, legendY - 9, 10, 10);
@@ -212,8 +214,8 @@ export async function generateExpenseChartPng(params: {
         ctx.fillText(c.category, 206, legendY);
         ctx.fillStyle = '#64748B';
         ctx.font = '10px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
-        ctx.fillText(`₩${Math.round(c.krwAmount).toLocaleString()} (${c.percent.toFixed(1)}%)`, 206, legendY + 14);
-        legendY += 36;
+        ctx.fillText(`₩${Math.round(c.krwAmount).toLocaleString()} (${c.percent.toFixed(1)}%)`, 206, legendY + 13);
+        legendY += 32;
     });
 
     // [우측] 일차별 지출 막대 그래프

@@ -69,7 +69,7 @@ export interface TravelExportData {
 /**
  * 여행 경비 카테고리
  */
-export type ExpenseCategory = '식비' | '숙박' | '교통·렌터카' | '관광·쇼핑' | '기타';
+export type ExpenseCategory = '항공권' | '렌트/교통' | '숙소' | '식비' | '관광' | '쇼핑(편의점)' | '기타';
 
 /**
  * 지원 통화 코드

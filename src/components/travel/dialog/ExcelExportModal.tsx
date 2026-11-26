@@ -159,11 +159,13 @@ const ExcelExportModalContent: React.FC<ExcelExportModalProps> = ({
                 dayMemos,
             };
 
-            if (onSaveExportMeta) {
-                await onSaveExportMeta(metaPayload);
-            }
+            const saveMetaPromise = onSaveExportMeta
+                ? Promise.resolve(onSaveExportMeta(metaPayload)).catch((saveErr) => {
+                      console.warn('[ExcelExportModal] Export meta save skipped:', saveErr);
+                  })
+                : Promise.resolve();
 
-            const rateRes = await fetchRatesToKrw();
+            const [rateRes] = await Promise.all([fetchRatesToKrw(), saveMetaPromise]);
 
             await exportTravelToExcel({
                 travel,
@@ -179,7 +181,8 @@ const ExcelExportModalContent: React.FC<ExcelExportModalProps> = ({
             onClose();
         } catch (err) {
             console.error('[ExcelExportModal] Export failed:', err);
-            alert('Excel 내보내기 중 오류가 발생했습니다.');
+            const detail = err instanceof Error ? `\n(${err.message})` : '';
+            alert(`Excel 내보내기 중 오류가 발생했습니다.${detail}`);
         } finally {
             setIsExporting(false);
             setProgressText(null);

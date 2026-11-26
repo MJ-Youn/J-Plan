@@ -9,8 +9,11 @@ import {
     calculateSettlements,
     convertToKrw,
     DEFAULT_RATES_TO_KRW,
+    EXPENSE_CATEGORIES,
     fetchRatesToKrw,
     getItineraryCosts,
+    mapItineraryTypeToExpenseCategory,
+    normalizeExpenseCategory,
 } from '../../../utils/expenseService';
 import ExpenseCharts from './ExpenseCharts';
 
@@ -21,7 +24,6 @@ interface ExpenseModalProps {
     canEdit: boolean;
 }
 
-const EXPENSE_CATEGORIES: ExpenseCategory[] = ['식비', '숙박', '교통·렌터카', '관광·쇼핑', '기타'];
 const CURRENCIES: ExpenseCurrency[] = ['KRW', 'JPY', 'USD', 'EUR', 'TWD', 'THB', 'VND'];
 
 /**
@@ -86,13 +88,6 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     const combinedExpenses = useMemo<
         Array<ExpenseItem & { source: 'itinerary' | 'manual'; itineraryId?: string; costId?: string; rawCostTitle?: string }>
     >(() => {
-        const mapItineraryCat = (type: string): ExpenseCategory => {
-            if (type === '이동') return '교통·렌터카';
-            if (type === '식사') return '식비';
-            if (type === '관광') return '관광·쇼핑';
-            return '기타';
-        };
-
         const fromItineraries = itineraries
             .filter((i) => i.travelId === travel.id)
             .flatMap((i) =>
@@ -102,7 +97,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                     costId: c.id,
                     rawCostTitle: c.title || i.content,
                     dayIndex: i.dayIndex,
-                    category: mapItineraryCat(i.type),
+                    category: mapItineraryTypeToExpenseCategory(i.type, c.title || i.content),
                     title: c.title && c.title !== i.content ? `${i.content} (${c.title})` : i.content,
                     amount: c.amount,
                     currency: c.currency,
@@ -111,7 +106,11 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
                 })),
             );
 
-        const manual = expenses.map((e) => ({ ...e, source: 'manual' as const }));
+        const manual = expenses.map((e) => ({
+            ...e,
+            category: normalizeExpenseCategory(e.category),
+            source: 'manual' as const,
+        }));
         return [...fromItineraries, ...manual].sort((a, b) => a.dayIndex - b.dayIndex);
     }, [itineraries, travel.id, expenses]);
 
@@ -172,7 +171,7 @@ const ExpenseModalContent: React.FC<ExpenseModalProps> = ({ onClose, travel, can
     ) => {
         setEditingId(exp.id);
         setEditDayIndex(exp.dayIndex);
-        setEditCategory(exp.category);
+        setEditCategory(normalizeExpenseCategory(exp.category));
         setEditTitle(exp.source === 'itinerary' ? exp.rawCostTitle || exp.title : exp.title);
         setEditAmount(String(exp.amount));
         setEditCurrency(exp.currency);

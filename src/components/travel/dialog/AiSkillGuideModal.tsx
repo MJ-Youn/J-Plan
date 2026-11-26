@@ -61,8 +61,14 @@ const AiSkillGuideContent: React.FC<AiSkillGuideModalProps> = ({ onClose }) => {
         const a = document.createElement('a');
         a.href = url;
         a.download = 'j-plan-itinerary-skill.md';
+        a.rel = 'noopener';
+        a.style.display = 'none';
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => {
+            a.remove();
+            URL.revokeObjectURL(url);
+        }, 10000);
     };
 
     return (
